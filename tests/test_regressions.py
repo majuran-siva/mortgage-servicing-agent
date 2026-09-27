@@ -243,6 +243,42 @@ class RuleTests(unittest.TestCase):
                 self.assertIsNotNone(_transformers.t_schema(client, model))
 
 
+class InsuranceRenewalTests(unittest.TestCase):
+    def daniel(self, **changes):
+        return request(borrower_name='Daniel Okafor', mortgage_number='MTG-55408', property_postal_code='L5B 3C2',
+                       request_summary='Show renewed insurance and make a prepayment.',
+                       changes=dict(new_payment_frequency='not specified', prepayment_amount_cad=15000, **changes))
+
+    def test_expiring_insurance_requires_declaration_page(self):
+        w = workflow(self.daniel(), 'prepayment')
+        items = {i['item']: i for i in w['document_checklist']['items']}
+        self.assertEqual(items['Home insurance declaration page']['priority'], 'required')
+        self.assertEqual(route(w), 'needs_documents')
+        self.assertTrue(any('Home insurance on file' in n for n in w['servicing_decision']['servicing_notes']))
+
+    def test_captured_declaration_page_completes_prepayment(self):
+        c = r.prepare_request(self.daniel(), [dict(id='ins1', document_types=['insurance_declaration'])])
+        w = workflow(c, 'prepayment')
+        self.assertEqual(route(w), 'ready_to_process')
+        notes = w['servicing_decision']['servicing_notes']
+        self.assertTrue(any('No prepayment charge' in n for n in notes))
+        self.assertTrue(any('captured on camera' in n for n in notes))
+
+    def test_insurance_rule_only_applies_near_expiry(self):
+        record = dict(home_insurance_expiry='2026-09-30')
+        self.assertEqual(r.insurance_days_left(record, date(2026, 9, 27)), 3)
+        self.assertEqual(r.insurance_days_left(record, date(2026, 10, 2)), -2)
+        self.assertIsNone(r.insurance_days_left({}, date(2026, 9, 27)))
+        far = r.apply_servicing_rules(self.daniel(), r.validate_required_fields(self.daniel()),
+                                      dict(request_type='prepayment', priority='low', priority_rationale='x'), today=date(2026, 6, 1))
+        self.assertFalse(any('Home insurance' in n for n in far['servicing_notes']))
+        self.assertNotIn('Home insurance declaration page', far['required_documents'])
+
+    def test_other_accounts_do_not_require_insurance(self):
+        items = [i['item'] for i in workflow(request(), 'payment_change')['document_checklist']['items']]
+        self.assertNotIn('Home insurance declaration page', items)
+
+
 class ServerStateTests(unittest.TestCase):
     def test_account_details_hidden_until_verified(self):
         session = s.IntakeSession('test')
@@ -434,6 +470,31 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result['confirmed'])
         self.assertNotIn('123456789', session.evidence_photos[0]['caption'])
         self.assertEqual(session.evidence_photos[0]['document_types'], ['void_cheque'])
+
+    async def test_insurance_capture_reads_expiry_date(self):
+        session = s.IntakeSession('frame', last_frame=b'FRAME', last_frame_at=time.monotonic(),
+                                  mortgage_record=lookup_mortgage('MTG-55408', 'Daniel Okafor', 'L5B 3C2'))
+        async def model(**kwargs):
+            return NS(text=json.dumps(dict(observation='Home insurance declaration page for the Mississauga property.',
+                                           supports_caller_description=True, document_types=['insurance_declaration'],
+                                           expiry_date='2027-09-30')))
+        with patch.object(s, '_client', return_value=NS(aio=NS(models=NS(generate_content=model)))):
+            result = await s._pin_document_photo(session, dict(caller_description='my renewed insurance', observation='x', confirmed=True))
+        self.assertEqual(result['insurance_expiry_on_document'], '2027-09-30')
+        self.assertEqual(session.evidence_photos[0]['expiry_date'], '2027-09-30')
+        self.assertIn('2027-09-30', session.camera_notes[0])
+        self.assertTrue(any('2027-09-30' in n for n in s.captured_insurance_notes(session)))
+
+    async def test_expiry_ignored_unless_insurance_document(self):
+        for types, expiry in [([], '2027-09-30'), (['insurance_declaration'], 'next year'), (['void_cheque'], '2027-09-30')]:
+            with self.subTest(types=types, expiry=expiry):
+                session = s.IntakeSession('frame', last_frame=b'FRAME', last_frame_at=time.monotonic())
+                async def model(**kwargs):
+                    return NS(text=json.dumps(dict(observation='Document', supports_caller_description=False, document_types=types, expiry_date=expiry)))
+                with patch.object(s, '_client', return_value=NS(aio=NS(models=NS(generate_content=model)))):
+                    result = await s._pin_document_photo(session, {})
+                self.assertEqual(session.evidence_photos[0]['expiry_date'], '')
+                self.assertNotIn('insurance_expiry_on_document', result)
 
     async def test_without_caller_description_capture_is_unconfirmed(self):
         session = s.IntakeSession('frame', last_frame=b'FRAME', last_frame_at=time.monotonic())

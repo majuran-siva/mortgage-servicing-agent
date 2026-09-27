@@ -101,6 +101,7 @@ SPECIALIST_TYPES = {"rate_term_change", "life_event", "other"}
 UNCLASSIFIED = "Waiting for the caller's request."
 CONTACT_CHANGE_WINDOW_DAYS = 30
 RENEWAL_WINDOW_DAYS = 120
+INSURANCE_RENEWAL_WINDOW_DAYS = 30
 
 
 def _as_model(model_type, value):
@@ -189,12 +190,24 @@ def prepare_request(request_value, received_evidence=()):
     return request.model_copy(update={"evidence_records": []}).model_dump() | {"evidence_records": records}
 
 
-def required_document_keys(request: ServiceRequest, classification: RequestClassification) -> list[tuple[str, str]]:
+def insurance_days_left(record: dict[str, Any] | None, today: date) -> int | None:
+    """Days until the home insurance on file expires (negative once expired), or None if not tracked."""
+
+    expiry = _parse_date((record or {}).get("home_insurance_expiry", ""))
+    return (expiry - today).days if expiry else None
+
+
+def required_document_keys(
+    request: ServiceRequest, classification: RequestClassification, today: date | None = None
+) -> list[tuple[str, str]]:
     """(document key, priority) pairs that apply to this request."""
 
     types = _request_types(classification)
     changes = request.requested_changes
     docs: list[tuple[str, str]] = []
+    days_left = insurance_days_left(find_mortgage(request.mortgage_number), today or date.today())
+    if days_left is not None and days_left <= INSURANCE_RENEWAL_WINDOW_DAYS:
+        docs.append(("insurance_declaration", "required"))
     if changes.new_bank_account:
         docs.append(("void_cheque", "required"))
     if "payout_discharge" in types:
@@ -333,7 +346,7 @@ def apply_servicing_rules(
         action = "collect_info" if issue == "Mortgage number needs confirmation" else "security_review"
         add("ID-001", "high", issue, action)
 
-    for key, priority in required_document_keys(request, classification):
+    for key, priority in required_document_keys(request, classification, today):
         label = DOCUMENTS[key][0]
         if priority == "required" and not _document_provided(key, request):
             add("DOC-001", "medium", f"Missing document: {label}. {DOCUMENTS[key][1]}", "collect_document", label)
@@ -419,6 +432,17 @@ def apply_servicing_rules(
         days_to_maturity = (maturity - today).days
         if 0 <= days_to_maturity <= RENEWAL_WINDOW_DAYS:
             notes.append(f"Term matures {record['maturity_date']} ({days_to_maturity} days). Mention renewal options are coming.")
+
+        days_left = insurance_days_left(record, today)
+        if days_left is not None and days_left <= INSURANCE_RENEWAL_WINDOW_DAYS:
+            if _document_provided("insurance_declaration", request):
+                notes.append("Updated home insurance declaration page was captured on camera.")
+            else:
+                notes.append(
+                    f"Home insurance on file {'expired' if days_left < 0 else 'expires'} {record['home_insurance_expiry']}"
+                    f"{'' if days_left < 0 else f' ({days_left} days)'}. Ask the borrower to show the renewed "
+                    "policy's declaration page on camera."
+                )
 
         if "property_tax_insurance" in types:
             notes.append(

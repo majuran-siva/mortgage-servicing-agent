@@ -373,7 +373,8 @@ def _ui_state(
     manifest = [{k: v for k, v in photo.items() if k != "data_url"} for photo in session.evidence_photos]
     packet_markdown = packet["markdown"] + "\n## Captured documents\n"
     for photo in session.evidence_photos:
-        packet_markdown += f"- [{photo['id']}](documents/{photo['id']}.jpg): {photo['caption']} — {'confirmed' if photo['confirmed'] else 'unconfirmed'}; captured {photo['captured_at']}\n"
+        expiry = f"; insurance expires {photo['expiry_date']}" if photo.get("expiry_date") else ""
+        packet_markdown += f"- [{photo['id']}](documents/{photo['id']}.jpg): {photo['caption']} — {'confirmed' if photo['confirmed'] else 'unconfirmed'}{expiry}; captured {photo['captured_at']}\n"
     if not manifest:
         packet_markdown += "No documents captured.\n"
     if session.scenario:
@@ -402,7 +403,7 @@ def _ui_state(
         "live_model": session.live_model,
         "missing_blockers": missing,
         "documents": docs,
-        "servicing_notes": decision.get("servicing_notes", []) if validation.get("identity_verified") else [],
+        "servicing_notes": (decision.get("servicing_notes", []) + captured_insurance_notes(session)) if validation.get("identity_verified") else [],
         "evidence_photos": session.evidence_photos,
         "camera_notes": session.camera_notes,
         "scenario": session.scenario,
@@ -692,6 +693,17 @@ class FrameObservation(BaseModel):
     observation: str
     supports_caller_description: bool
     document_types: list[str] = Field(default_factory=list)
+    expiry_date: str = Field(
+        default="",
+        description="Policy expiry or end date printed on an insurance document, as YYYY-MM-DD. Empty if none is legible.",
+    )
+
+
+def _valid_date(value: str) -> str:
+    try:
+        return datetime.strptime(str(value or "").strip(), "%Y-%m-%d").date().isoformat()
+    except ValueError:
+        return ""
 
 
 def set_camera_mode(session: IntakeSession, enabled: bool) -> bool:
@@ -732,7 +744,8 @@ async def _pin_document_photo(session: IntakeSession, args: dict[str, Any]) -> d
             "A statement to check against the image is: " + json.dumps(caller_said) +
             ". supports_caller_description is false unless that statement is clearly supported; without a statement use false. "
             "document_types must be empty unless the image actually shows that document. Permitted types: "
-            + ", ".join(sorted(DOCUMENTS))))],
+            + ", ".join(sorted(DOCUMENTS)) + ". For an insurance document, set expiry_date to the policy expiry "
+            "or end date exactly as printed, converted to YYYY-MM-DD; leave it empty if it is not clearly legible."))],
         config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=FrameObservation)), 35)
     observation = FrameObservation.model_validate_json(result.text)
     if session.deleted:
@@ -740,14 +753,41 @@ async def _pin_document_photo(session: IntakeSession, args: dict[str, Any]) -> d
     if len(session.evidence_photos) >= MAX_PHOTOS:
         return {"pinned": False, "message": "Document limit reached."}
     caption = redact_numbers(observation.observation)
+    document_types = [k for k in observation.document_types if k in DOCUMENTS]
+    expiry = _valid_date(observation.expiry_date) if "insurance_declaration" in document_types else ""
     photo = {"id": uuid.uuid4().hex, "frame_id": frame_id, "data_url": _data_url(frame, "image/jpeg"),
              "caption": caption, "caller_description": caller_said,
              "confirmed": bool(caller_said and observation.supports_caller_description), "evidence_type": "camera capture",
-             "document_types": [k for k in observation.document_types if k in DOCUMENTS], "captured_at": captured_at}
+             "document_types": document_types, "expiry_date": expiry, "captured_at": captured_at}
     session.evidence_photos.append(photo)
-    session.camera_notes.append(f"Capture {photo['id']}: {photo['caption']}. Statement supplied to capture tool: {caller_said or 'none'}. Verification: {'confirmed' if photo['confirmed'] else 'unconfirmed'}.")
+    session.camera_notes.append(
+        f"Capture {photo['id']}: {photo['caption']}. Statement supplied to capture tool: {caller_said or 'none'}. "
+        f"Verification: {'confirmed' if photo['confirmed'] else 'unconfirmed'}."
+        + (f" Insurance expiry shown on the document: {expiry}." if expiry else "")
+    )
     session.revision += 1
-    return {"pinned": True, "confirmed": photo["confirmed"], "observation": photo["caption"], "evidence_id": photo["id"], "photo_count": len(session.evidence_photos)}
+    result = {"pinned": True, "confirmed": photo["confirmed"], "observation": photo["caption"], "evidence_id": photo["id"], "photo_count": len(session.evidence_photos)}
+    if expiry:
+        result["insurance_expiry_on_document"] = expiry
+        result["next_step"] = "Read the new expiry date back to the caller and ask them to confirm it."
+    return result
+
+
+def captured_insurance_notes(session: IntakeSession) -> list[str]:
+    """Servicing notes for insurance expiry dates read off captured documents."""
+
+    notes = []
+    today = datetime.now().date()
+    for photo in session.evidence_photos:
+        expiry = photo.get("expiry_date")
+        if not expiry:
+            continue
+        days = (datetime.strptime(expiry, "%Y-%m-%d").date() - today).days
+        if days < 0:
+            notes.append(f"The captured insurance document shows an expiry of {expiry}, which has already passed. Ask for the renewed policy.")
+        else:
+            notes.append(f"New home insurance expiry read from the captured document: {expiry}. Update the insurance record once confirmed.")
+    return notes
 
 
 def _show_payment_scenario(session: IntakeSession, args: dict[str, Any]) -> dict[str, Any]:

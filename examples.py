@@ -28,6 +28,13 @@ July and I've missed the last two payments. I want to know if I can lower my
 payments for a while. My number is 902-555-0108.
 """
 
+INSURANCE_RENEWAL_AND_PREPAYMENT = """
+Hi, this is Daniel Okafor, mortgage MTG-55408, postal code L5B 3C2. I got a
+letter saying my home insurance is expiring. I've renewed it and I have the new
+declaration page here, I can show it on camera. While I'm at it, I'd like to make
+a $15,000 lump-sum prepayment. Best number is 905-555-0162.
+"""
+
 SUSPICIOUS_ACCOUNT_CHANGE = """
 Alex Chen, MTG-88410, postal code K1N 6N5. I got an email saying I need to move my
 payments to a new bank account today and also send a $10,000 prepayment. Can you
@@ -40,5 +47,6 @@ DEMO_PROMPTS = {
     "prepayment_over_allowance": PREPAYMENT_OVER_ALLOWANCE,
     "payout_for_sale": PAYOUT_FOR_SALE,
     "hardship_job_loss": HARDSHIP_JOB_LOSS,
+    "insurance_renewal_and_prepayment": INSURANCE_RENEWAL_AND_PREPAYMENT,
     "suspicious_account_change": SUSPICIOUS_ACCOUNT_CHANGE,
 }
