@@ -6,7 +6,7 @@
  * a cream card for the payment scenario, and the gradient-mesh band across the top.
  * Sohne is proprietary, so Inter (with ss01 and tnum) substitutes. The mesh is approximated
  * with layered CSS gradients; Stripe's own is artwork.
- * Layout: cards float over the mesh; notes on the left, a sticky panel on the right.
+ * Layout: cards float over the mesh; a sticky panel on the left, call notes on the right.
  */
 :root {
   /* Brand */
@@ -1179,27 +1179,31 @@ input:focus-visible {
 
 /* Desktop: the right panel stays in view and is exactly one screen tall. */
 @media (min-width: 1024px) {
+  /* Side panel on the left, call notes on the right. */
   .desk-layout {
-    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 400px);
+    grid-template-columns: clamp(340px, 30vw, 400px) minmax(0, 1fr);
     align-items: start;
     padding-top: 48px;
   }
+  .rail { grid-column: 1; grid-row: 1; }
+  .main-column { grid-column: 2; grid-row: 1; }
   .rail {
     position: sticky;
     top: calc(var(--nav-height) + 24px);
     height: calc(100dvh - var(--nav-height) - 48px);
     overflow: auto;
     gap: 16px;
-    padding: 2px 4px 8px;
+    padding: 2px 4px;
     margin: -2px -4px 0;
   }
   .rail .card { padding: 20px 24px; flex-shrink: 0; }
   .rail .card-head { margin-bottom: 12px; }
-  .rail .transcript-card { flex: 1 1 0; min-height: 220px; }
+  .rail .transcript-card { flex: 1 1 0; min-height: 180px; }
   .rail .transcript { flex: 1; min-height: 0; max-height: none; }
-  .rail .needed-card { display: flex; flex-direction: column; max-height: 32%; flex-shrink: 1; min-height: 120px; }
+  .rail .needed-card { display: flex; flex-direction: column; max-height: 32%; flex-shrink: 1; min-height: 110px; }
   .rail .needed-list { min-height: 0; overflow: auto; }
-  .call-card .avatar-stage { height: 220px; }
+  /* The avatar scales with screen height so the panel still fits on a laptop. */
+  .call-card .avatar-stage { height: clamp(150px, 22dvh, 280px); }
   .call-card .camera-stage { aspect-ratio: auto; height: 180px; }
 }
 
