@@ -7,10 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Inter+Tight:wght@500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=revolut-1" />
+    <link rel="stylesheet" href="./styles.css?v=stripe-1" />
   </head>
   <body>
     <div class="desk">
@@ -26,92 +26,89 @@
       </header>
 
       <main class="desk-layout">
-        <aside class="side media-column" aria-label="Live call and camera">
-          <section class="card call-card">
-            <div class="card-head">
-              <span class="card-kicker">Live call</span>
-              <span id="callStatus" class="pill">Connecting</span>
-            </div>
-
-            <div id="avatarStage" class="avatar-stage" data-state="idle" hidden>
-              <video id="avatarVideo" playsinline aria-label="Live AI mortgage assistant" hidden></video>
-              <span class="avatar-disclosure">AI avatar</span>
-              <div class="avatar-identity">
-                <span id="avatarName">Mortgage assistant</span>
-                <span id="avatarStatus" role="status">Start a conversation when you’re ready</span>
+        <div class="main-column">
+          <section class="notebook-wrap" aria-label="Call notebook" tabindex="0">
+              <div class="notebook">
+                <div class="holes" aria-hidden="true"><span></span><span></span><span></span></div>
+                <div class="page-head">
+                  <span id="pageDate">Mortgage call notes</span>
+                  <span id="pageAgent">Gemini 3.8 Live, call notes</span>
+                </div>
+                <div id="notes" class="notes"></div>
+                <div id="pinboard" class="pinboard"></div>
+                <div id="stamp" class="stamp" hidden></div>
+                <div id="pen" class="pen" hidden><span class="pen-nib" aria-hidden="true"></span> writing</div>
               </div>
-              <button id="resumeAvatar" class="avatar-resume" type="button" hidden>Play voice and video</button>
-            </div>
-
-            <div id="cameraStage" class="camera-stage" hidden>
-              <video id="cameraPreview" autoplay muted playsinline></video>
-              <span class="camera-tag"><span class="rec-dot" aria-hidden="true"></span> Agent is watching</span>
-            </div>
-
-            <div class="controls">
-              <button id="micButton" class="round-button" type="button" aria-label="Start live voice">
-                <span class="icon-mic" aria-hidden="true"></span>
-                <span class="round-label">Talk</span>
-              </button>
-              <button id="cameraButton" class="round-button" type="button" aria-label="Show a document on camera">
-                <span class="icon-camera" aria-hidden="true"></span>
-                <span class="round-label">Show document</span>
-              </button>
-              <button id="newIntakeButton" class="round-button subtle" type="button" aria-label="Start a new call">
-                <span class="icon-new" aria-hidden="true"></span>
-                <span class="round-label">New call</span>
-              </button>
-            </div>
-          </section>
+            </section>
           <section class="card team-card">
-            <div class="card-head">
-              <span class="card-kicker">Servicing team</span>
-              <span class="card-hint">Working in the background while the call continues</span>
-            </div>
-            <ul id="teamFeed" class="team-feed" tabindex="0" aria-label="Servicing team activity"></ul>
-          </section>
-        </aside>
+              <div class="card-head">
+                <span class="card-kicker">Servicing team</span>
+                <span class="card-hint">Working in the background while the call continues</span>
+              </div>
+              <ul id="teamFeed" class="team-feed" tabindex="0" aria-label="Servicing team activity"></ul>
+            </section>
+        </div>
+        <aside class="side rail" aria-label="Live call, transcript, and request checklist">
+          <section class="card call-card">
+              <div class="card-head">
+                <span class="card-kicker">Live call</span>
+                <span id="callStatus" class="pill">Connecting</span>
+              </div>
 
-        <section class="notebook-wrap" aria-label="Call notebook" tabindex="0">
-          <div class="notebook">
-            <div class="holes" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="page-head">
-              <span id="pageDate">Mortgage call notes</span>
-              <span id="pageAgent">Gemini 3.8 Live, call notes</span>
-            </div>
-            <div id="notes" class="notes"></div>
-            <div id="pinboard" class="pinboard"></div>
-            <div id="stamp" class="stamp" hidden></div>
-            <div id="pen" class="pen" hidden><span class="pen-nib" aria-hidden="true"></span> writing</div>
-          </div>
-        </section>
-        <aside class="side conversation-column" aria-label="Transcript and request checklist">
+              <div id="avatarStage" class="avatar-stage" data-state="idle" hidden>
+                <video id="avatarVideo" playsinline aria-label="Live AI mortgage assistant" hidden></video>
+                <span class="avatar-disclosure">AI avatar</span>
+                <div class="avatar-identity">
+                  <span id="avatarName">Mortgage assistant</span>
+                  <span id="avatarStatus" role="status">Start a conversation when you’re ready</span>
+                </div>
+                <button id="resumeAvatar" class="avatar-resume" type="button" hidden>Play voice and video</button>
+              </div>
+
+              <div id="cameraStage" class="camera-stage" hidden>
+                <video id="cameraPreview" autoplay muted playsinline></video>
+                <span class="camera-tag"><span class="rec-dot" aria-hidden="true"></span> Agent is watching</span>
+              </div>
+
+              <div class="controls">
+                <button id="micButton" class="round-button" type="button" aria-label="Start live voice">
+                  <span class="icon-mic" aria-hidden="true"></span>
+                  <span class="round-label">Talk</span>
+                </button>
+                <button id="cameraButton" class="round-button" type="button" aria-label="Show a document on camera">
+                  <span class="icon-camera" aria-hidden="true"></span>
+                  <span class="round-label">Show document</span>
+                </button>
+                <button id="newIntakeButton" class="round-button subtle" type="button" aria-label="Start a new call">
+                  <span class="icon-new" aria-hidden="true"></span>
+                  <span class="round-label">New call</span>
+                </button>
+              </div>
+            </section>
           <section class="card transcript-card">
-            <div class="card-head">
-              <span class="card-kicker">Transcript</span>
-            </div>
-            <div id="transcript" class="transcript" aria-live="polite" tabindex="0" role="region" aria-label="Conversation transcript"></div>
+              <div class="card-head">
+                <span class="card-kicker">Transcript</span>
+              </div>
+              <div id="transcript" class="transcript" aria-live="polite" tabindex="0" role="region" aria-label="Conversation transcript"></div>
 
-            <form id="textForm" class="text-entry">
-              <input
-                id="textInput"
-                type="text"
-                autocomplete="off"
-                placeholder="Or type what the caller says..."
-                aria-label="Type a caller response"
-              />
-              <button type="submit">Send</button>
-            </form>
-          </section>
-
+              <form id="textForm" class="text-entry">
+                <input
+                  id="textInput"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Or type what the caller says..."
+                  aria-label="Type a caller response"
+                />
+                <button type="submit">Send</button>
+              </form>
+            </section>
           <section class="card needed-card">
-            <div class="card-head">
-              <span class="card-kicker">Still needed</span>
-              <span id="readiness" class="pill neutral">0% collected</span>
-            </div>
-            <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
-          </section>
-
+              <div class="card-head">
+                <span class="card-kicker">Still needed</span>
+                <span id="readiness" class="pill neutral">0% collected</span>
+              </div>
+              <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
+            </section>
         </aside>
       </main>
     </div>
