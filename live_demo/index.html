@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=calls-2" />
+    <link rel="stylesheet" href="./styles.css?v=calls-3" />
   </head>
   <body>
     <div class="desk">
@@ -27,13 +27,6 @@
 
       <main class="desk-layout">
         <div class="main-column">
-          <section class="card needed-card">
-              <div class="card-head">
-                <span class="card-kicker">Still needed</span>
-                <span id="readiness" class="pill neutral">0% collected</span>
-              </div>
-              <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
-            </section>
           <section class="notebook-wrap" aria-label="Call notebook" tabindex="0">
               <div class="notebook">
                 <div class="holes" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -53,6 +46,13 @@
                 <span class="card-hint">Working in the background while the call continues</span>
               </div>
               <ul id="teamFeed" class="team-feed" tabindex="0" aria-label="Servicing team activity"></ul>
+            </section>
+          <section class="card needed-card">
+              <div class="card-head">
+                <span class="card-kicker">Still needed</span>
+                <span id="readiness" class="pill neutral">0% collected</span>
+              </div>
+              <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
             </section>
         </div>
         <aside class="side rail" aria-label="Live call and transcript">

@@ -7,7 +7,7 @@
  * Sohne is proprietary, so Inter (with ss01 and tnum) substitutes. The mesh is approximated
  * with layered CSS gradients; Stripe's own is artwork.
  * Layout: cards float over the mesh; a sticky live call + transcript panel on the left,
- * the "still needed" checklist and call notes on the right.
+ * call notes, servicing team, and the "still needed" checklist on the right.
  */
 :root {
   /* Brand */
@@ -1344,7 +1344,7 @@ input:focus-visible {
   .rail .card-head { margin-bottom: 12px; }
   .rail .transcript-card { flex: 1 1 0; min-height: 180px; }
   .rail .transcript { flex: 1; min-height: 0; max-height: none; }
-  /* "Still needed" sits above the notes; its list scrolls if it grows long. */
+  /* "Still needed" sits at the bottom of the right column; its list scrolls if it grows long. */
   .main-column .needed-list { max-height: 220px; overflow: auto; }
   /* The avatar scales with screen height so the panel still fits on a laptop. */
   .call-card .avatar-stage { height: clamp(200px, 34dvh, 420px); }
@@ -1358,8 +1358,8 @@ input:focus-visible {
   .call-card { order: 1; }
   .notebook-wrap { order: 2; }
   .transcript-card { order: 3; }
-  .needed-card { order: 4; }
-  .team-card { order: 5; }
+  .team-card { order: 4; }
+  .needed-card { order: 5; }
   .notebook { padding: 32px 28px; }
 }
 
