@@ -52,31 +52,35 @@ let writing = false;
 const seenNotes = new Set();
 
 const routeLabels = {
-  emergency_escalation: ["Escalate to human", "danger"],
-  policy_review: ["Policy review", "warning"],
-  needs_docs: ["Needs docs", "warning"],
-  special_investigation: ["SIU review", "info"],
-  ready_for_adjuster: ["Ready for adjuster", "success"],
+  security_review: ["Security review", "danger"],
+  hardship_support: ["Hardship support", "info"],
+  specialist_review: ["Specialist review", "warning"],
+  needs_documents: ["Needs info", "warning"],
+  ready_to_process: ["Ready to process", "success"],
 };
 
 const blockerQuestions = {
-  policyholder_name: "Name?",
-  policy_number: "Policy number?",
+  borrower_name: "Name on the mortgage?",
+  mortgage_number: "Mortgage number?",
+  property_postal_code: "Property postal code?",
   contact_method: "Best contact?",
-  date_of_loss: "When did it happen?",
-  loss_location: "Where?",
-  loss_description: "What happened?",
+  request_summary: "What do they need?",
+  payment_change_detail: "Amount, frequency, or date?",
+  effective_date: "Start date?",
+  prepayment_amount_cad: "Prepayment amount?",
+  payout_date: "Payout date?",
+  payout_reason: "Sale, switch, or paying off?",
 };
 
 const teamLabels = {
-  lookup_policy: "Policy desk",
-  sync_claim_packet: "Claim writer",
-  pin_evidence_photo: "Evidence",
-  draw_incident_sketch: "Sketch artist",
+  lookup_mortgage: "Account desk",
+  sync_service_request: "Request writer",
+  pin_document_photo: "Documents",
+  show_payment_scenario: "Calculator",
 };
 
 const emptyState = {
-  route: "needs_docs",
+  route: "needs_documents",
   progress: 0,
   fields: {},
   transcript: [],
@@ -86,10 +90,11 @@ const emptyState = {
   documents: [],
   evidence_photos: [],
   camera_notes: [],
-  sketch: null,
-  policy: null,
+  servicing_notes: [],
+  scenario: null,
+  mortgage: null,
   handoff: {},
-  packet_markdown: "# Adjuster handoff\n\nNo packet yet.",
+  packet_markdown: "# Mortgage service request\n\nNo packet yet.",
 };
 
 function escapeHtml(value) {
@@ -151,7 +156,7 @@ function render() {
 function renderTranscript() {
   transcriptEl.innerHTML = (state.transcript || [])
     .map((turn) => {
-      const cls = turn.speaker === "Agent" ? "agent" : turn.speaker === "System" ? "system" : "claimant";
+      const cls = turn.speaker === "Agent" ? "agent" : turn.speaker === "System" ? "system" : "caller";
       const who = turn.speaker === "Agent" ? "AI" : turn.speaker === "System" ? "!" : "You";
       return `<article class="turn ${cls} ${turn.streaming ? "streaming" : ""}"><span class="who">${who}</span><p>${escapeHtml(turn.text)}</p></article>`;
     })
@@ -162,49 +167,29 @@ function renderTranscript() {
 function buildNotes() {
   const f = state.fields || {};
   const notes = [];
-  const name = isFilled(f.claimant) ? f.claimant.value : "";
-  const policy = isFilled(f.policy) ? f.policy.value : "";
-  if (name || policy) {
-    notes.push({ key: `title:${name}|${policy}`, cls: "title", text: [name, policy].filter(Boolean).join("  ·  ") });
+  const name = isFilled(f.caller) ? f.caller.value : "";
+  const mortgage = isFilled(f.mortgage) ? f.mortgage.value : "";
+  if (name || mortgage) {
+    notes.push({ key: `title:${name}|${mortgage}`, cls: "title", text: [name, mortgage].filter(Boolean).join("  ·  ") });
   }
-  const record = state.policy;
+  const record = state.mortgage;
   if (record) {
-    if (record.found) {
-      const active = record.status === "active";
-      const extras = (record.coverages || []).slice(0, 1).join("");
-      notes.push({
-        key: `policy:${record.policy_number}:${record.status}`,
-        cls: active ? "check" : "flag urgent",
-        text: active
-          ? `${record.policy_line}, active. ${extras}`
-          : `${record.policy_line}, ${record.status}. Human review before anything else.`,
-      });
+    if (!record.found) {
+      notes.push({ key: `acct:notfound:${record.mortgage_number}`, cls: "flag urgent", text: `Mortgage ${record.mortgage_number || ""} not found, confirm the number.` });
+    } else if (!record.verified) {
+      notes.push({ key: `acct:unverified:${record.mortgage_number}:${record.verification_failed}`, cls: "flag urgent", text: record.verification_failed ? "Details don't match the record. No account info shared." : "Found. Verify name and postal code before sharing details." });
     } else {
-      notes.push({ key: `policy:notfound:${record.policy_number}`, cls: "flag urgent", text: `Policy ${record.policy_number || ""} not found, confirm the number.` });
+      const active = record.status === "active";
+      notes.push({ key: `acct:${record.mortgage_number}:${record.status}`, cls: active ? "check" : "flag urgent", text: `Verified. ${record.product} at ${(record.rate * 100).toFixed(2)}%${active ? "" : `, ${record.status.replaceAll("_", " ")}`}` });
+      notes.push({ key: `acct-pay:${record.payment_amount}`, cls: "aside", text: `Pays ${f.payment?.value || money(record.payment_amount)}, ${money(record.balance, 0)} left, matures ${record.maturity_date}` });
     }
   }
-  const when = isFilled(f.date) ? f.date.value : "";
-  const where = isFilled(f.location) ? f.location.value : "";
-  if (when || where) {
-    notes.push({ key: `whenwhere:${when}|${where}`, cls: "", text: [where, when].filter(Boolean).join(", ") });
-  }
-  if (isFilled(f.description)) {
-    notes.push({ key: `desc:${f.description.value}`, cls: "", text: f.description.value });
-  }
-  if (isFilled(f.injuries)) {
-    const urgent = f.injuries.status === "urgent";
-    notes.push({ key: `inj:${f.injuries.value}`, cls: urgent ? "flag urgent" : "", text: urgent ? `Injury: ${f.injuries.value}` : f.injuries.value });
-  }
-  if (isFilled(f.contact)) {
-    notes.push({ key: `contact:${f.contact.value}`, cls: "aside", text: `Reach at ${f.contact.value}` });
-  }
-  if (isFilled(f.photos)) {
-    notes.push({ key: `ev:${f.photos.value}`, cls: "aside", text: `Has: ${f.photos.value}` });
-  }
-  if (isFilled(f.police)) {
-    notes.push({ key: `rep:${f.police.value}`, cls: "aside", text: `Report: ${f.police.value}` });
-  }
-  if (claimantHasSpoken()) {
+  if (isFilled(f.request)) notes.push({ key: `req:${f.request.value}`, cls: "", text: f.request.value });
+  if (isFilled(f.changes)) notes.push({ key: `chg:${f.changes.value}`, cls: "", text: `Wants: ${f.changes.value}` });
+  if (isFilled(f.hardship)) notes.push({ key: `hard:${f.hardship.value}`, cls: "flag urgent", text: `Hardship: ${f.hardship.value}` });
+  for (const note of state.servicing_notes || []) notes.push({ key: `rule:${note}`, cls: "aside", text: note });
+  if (isFilled(f.contact)) notes.push({ key: `contact:${f.contact.value}`, cls: "aside", text: `Reach at ${f.contact.value}` });
+  if (callerHasSpoken()) {
     const seenQuestions = new Set();
     for (const blocker of state.missing_blockers || []) {
       const question = shortBlocker(blocker);
@@ -215,13 +200,17 @@ function buildNotes() {
     }
   }
   if (!notes.length) {
-    notes.push({ key: "empty", cls: "aside", text: "Waiting for the claimant. Tap Talk, show the camera, or type below." });
+    notes.push({ key: "empty", cls: "aside", text: "Waiting for the caller. Tap Talk, show a document, or type below." });
   }
   return notes;
 }
 
-function claimantHasSpoken() {
-  return (state.transcript || []).some((turn) => turn.speaker === "Claimant" && String(turn.text || "").trim());
+function money(value, digits = 2) {
+  return `$${Number(value || 0).toLocaleString("en-CA", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function callerHasSpoken() {
+  return (state.transcript || []).some((turn) => turn.speaker === "Caller" && String(turn.text || "").trim());
 }
 
 function renderNotes() {
@@ -237,33 +226,105 @@ function renderNotes() {
 
 function renderPinboard() {
   const photos = state.evidence_photos || [];
-  const sketch = state.sketch;
+  const scenario = state.scenario;
   const cards = photos.map(
     (photo, index) => `
       <figure class="polaroid" style="--tilt: ${index % 2 ? 2 : -2.5}deg" data-key="${escapeHtml(photo.id)}">
-        <img src="${photo.data_url}" alt="Camera frame pinned as evidence" />
+        <img src="${photo.data_url}" alt="Document captured on camera" />
         <figcaption>${escapeHtml(photo.caption)}</figcaption>
-        <span class="tag ${photo.confirmed ? "" : "unconfirmed"}">${photo.claimant_description ? `Claimant says: ${escapeHtml(photo.claimant_description)} · ` : ""}${photo.confirmed ? "Supported by this image" : "Claim not confirmed by this image"}</span>
-        <span class="tag">Seen on camera ${escapeHtml(photo.captured_at || "")} · ${escapeHtml(photo.evidence_type || "evidence")}</span>
+        <span class="tag ${photo.confirmed ? "" : "unconfirmed"}">${photo.caller_description ? `Caller says: ${escapeHtml(photo.caller_description)} · ` : ""}${photo.confirmed ? "Matches what the caller described" : "Not confirmed by this image"}</span>
+        <span class="tag">Captured ${escapeHtml(photo.captured_at || "")}</span>
       </figure>`
   );
-  if (sketch) {
-    cards.push(`
-      <figure class="polaroid sketch" style="--tilt: 1.5deg" data-key="sketch-${sketch.version}">
-        <img src="${sketch.data_url}" alt="Hand drawn sketch of the incident scene" />
-        <figcaption>Does this look right?</figcaption>
-        <span class="tag">Sketch ${sketch.version}, drawn from what you described</span>
-      </figure>`);
-  }
+  if (scenario) cards.unshift(scenarioCard(scenario));
   const currentKeys = [...pinboardEl.querySelectorAll("[data-key]")].map((el) => el.dataset.key).join("|");
-  const nextKeys = [...photos.map((p) => p.id), sketch ? `sketch-${sketch.version}` : ""].filter(Boolean).join("|");
+  const nextKeys = [scenario ? `scenario-${scenario.version}` : "", ...photos.map((p) => p.id)].filter(Boolean).join("|");
   if (currentKeys !== nextKeys) pinboardEl.innerHTML = cards.join("");
+}
+
+const CHART = { width: 360, height: 190, left: 44, right: 12, top: 12, bottom: 26 };
+
+function chartPoints(balances, maxYears, maxBalance) {
+  const w = CHART.width - CHART.left - CHART.right;
+  const h = CHART.height - CHART.top - CHART.bottom;
+  return balances.map((balance, year) => [CHART.left + (year / maxYears) * w, CHART.top + h - (balance / maxBalance) * h]);
+}
+
+function scenarioCard(s) {
+  const current = s.current.yearly_balances;
+  const proposed = s.proposed.yearly_balances;
+  const maxYears = Math.max(current.length, proposed.length) - 1 || 1;
+  const maxBalance = Math.max(current[0], proposed[0]) || 1;
+  const path = (points) => points.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const cur = chartPoints(current, maxYears, maxBalance);
+  const pro = chartPoints(proposed, maxYears, maxBalance);
+  const h = CHART.height - CHART.top - CHART.bottom;
+  const ticks = [0, 0.5, 1].map((t) => {
+    const y = CHART.top + h - t * h;
+    return `<line class="grid" x1="${CHART.left}" x2="${CHART.width - CHART.right}" y1="${y}" y2="${y}"></line><text class="axis" x="${CHART.left - 6}" y="${y + 4}" text-anchor="end">${money((maxBalance * t) / 1000, 0)}k</text>`;
+  }).join("");
+  const step = maxYears > 20 ? 10 : 5;
+  const xTicks = [];
+  for (let year = 0; year <= maxYears; year += step) {
+    const x = CHART.left + (year / maxYears) * (CHART.width - CHART.left - CHART.right);
+    xTicks.push(`<text class="axis" x="${x}" y="${CHART.height - 8}" text-anchor="middle">${year}y</text>`);
+  }
+  const saved = s.interest_saved != null && s.interest_saved > 0;
+  const sooner = s.years_saved != null && s.years_saved > 0;
+  return `
+    <figure class="polaroid chart" style="--tilt: -1deg" data-key="scenario-${s.version}">
+      <figcaption>${escapeHtml(s.title)}</figcaption>
+      <div class="chart-stats">
+        <div><span class="stat-value">${money(s.proposed.payment)}</span><span class="stat-label">${escapeHtml(s.proposed.frequency.toLowerCase())}, was ${money(s.current.payment)} ${escapeHtml(s.current.frequency.toLowerCase())}</span></div>
+        <div><span class="stat-value">${sooner ? `${s.years_saved.toFixed(1)} yrs` : "—"}</span><span class="stat-label">${sooner ? "sooner" : "no change to payoff"}</span></div>
+        <div><span class="stat-value">${saved ? money(s.interest_saved, 0) : "—"}</span><span class="stat-label">${saved ? "less interest" : "no interest saved"}</span></div>
+      </div>
+      <div class="chart-legend"><span class="key current"></span>Current, ${s.current.years} yrs <span class="key proposed"></span>Proposed, ${s.proposed.years} yrs</div>
+      <div class="chart-wrap">
+        <svg class="balance-chart" viewBox="0 0 ${CHART.width} ${CHART.height}" role="img" aria-label="Mortgage balance over time, current versus proposed">
+          ${ticks}${xTicks.join("")}
+          <path class="line current" d="${path(cur)}"></path>
+          <path class="line proposed" d="${path(pro)}"></path>
+          <line class="crosshair" y1="${CHART.top}" y2="${CHART.height - CHART.bottom}" hidden></line>
+          <rect class="hit" x="${CHART.left}" y="${CHART.top}" width="${CHART.width - CHART.left - CHART.right}" height="${h}" data-years="${maxYears}"></rect>
+        </svg>
+        <div class="chart-tip" hidden></div>
+      </div>
+      <table class="visually-hidden"><caption>Balance at each year</caption><tr><th>Year</th><th>Current</th><th>Proposed</th></tr>${Array.from({ length: maxYears + 1 }, (_, y) => `<tr><td>${y}</td><td>${current[y] != null ? money(current[y], 0) : "paid off"}</td><td>${proposed[y] != null ? money(proposed[y], 0) : "paid off"}</td></tr>`).join("")}</table>
+      <span class="tag">${escapeHtml(s.assumptions)}</span>
+    </figure>`;
+}
+
+function onChartHover(event) {
+  if (event.type === "mouseleave") {
+    pinboardEl.querySelectorAll(".chart-tip").forEach((tip) => { tip.hidden = true; });
+    pinboardEl.querySelectorAll(".crosshair").forEach((line) => line.setAttribute("hidden", ""));
+    return;
+  }
+  const hit = event.target.closest?.(".balance-chart .hit");
+  const figure = event.target.closest?.(".polaroid.chart");
+  if (!figure || !state.scenario) return;
+  const tip = figure.querySelector(".chart-tip");
+  const cross = figure.querySelector(".crosshair");
+  if (!hit) { tip.hidden = true; cross.setAttribute("hidden", ""); return; }
+  const svg = hit.ownerSVGElement;
+  const box = svg.getBoundingClientRect();
+  const x = ((event.clientX - box.left) / box.width) * CHART.width;
+  const maxYears = Number(hit.dataset.years);
+  const w = CHART.width - CHART.left - CHART.right;
+  const year = Math.max(0, Math.min(maxYears, Math.round(((x - CHART.left) / w) * maxYears)));
+  const cx = CHART.left + (year / maxYears) * w;
+  cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.removeAttribute("hidden");
+  const value = (list) => (list[year] != null ? money(list[year], 0) : "paid off");
+  tip.innerHTML = `<strong>Year ${year}</strong><br>Current ${value(state.scenario.current.yearly_balances)}<br>Proposed ${value(state.scenario.proposed.yearly_balances)}`;
+  tip.style.left = `${(cx / CHART.width) * 100}%`;
+  tip.hidden = false;
 }
 
 function renderStamp() {
   const route = state.route;
   const [label, tone] = routeLabels[route] || [route, "warning"];
-  stampEl.hidden = !claimantHasSpoken() || writing;
+  stampEl.hidden = !callerHasSpoken() || writing;
   stampEl.textContent = label;
   if (stampEl.dataset.route !== route) {
     stampEl.dataset.route = route;
@@ -284,7 +345,7 @@ function renderNeeded() {
   }
   neededListEl.innerHTML = items.length
     ? items.map((item) => `<li class="${item.cls}"><span class="tick-box"></span><span>${escapeHtml(item.text)}</span></li>`).join("")
-    : `<li class="empty">Nothing yet. The list fills in as the claim team reads the call.</li>`;
+    : `<li class="empty">Nothing yet. The list fills in as the servicing team reads the call.</li>`;
   const progress = Number(state.progress || 0);
   readinessEl.textContent = `${progress}% collected`;
   readinessEl.className = `pill ${progress >= 80 ? "" : progress >= 40 ? "warning" : "neutral"}`;
@@ -297,7 +358,7 @@ function renderTeam() {
         .map((item) => {
           const phase = item.phase || "running";
           let headline = item.headline || "";
-          if (item.name === "sync_claim_packet" && phase === "done" && item.result) {
+          if (item.name === "sync_service_request" && phase === "done" && item.result) {
             const facts = (item.result.open_items || []).length;
             const docs = (item.result.open_documents || []).length;
             headline = `${String(item.result.routing_decision || "").replaceAll("_", " ")}: ${facts} open fact${facts === 1 ? "" : "s"}${docs ? ", documents still needed" : ""}`;
@@ -306,7 +367,7 @@ function renderTeam() {
           return `<li><span class="team-dot ${phase}"></span><span><span class="team-name">${escapeHtml(teamLabels[item.name] || item.name)}</span> · ${escapeHtml(headline)}</span><span class="team-meta ${item.scheduling === "INTERRUPT" ? "interrupt" : ""}">${escapeHtml(meta)}</span></li>`;
         })
         .join("")
-    : `<li class="empty">Policy desk, claim writer, evidence, and sketch artist will show up here as the agent calls them.</li>`;
+    : `<li class="empty">Account desk, request writer, documents, and calculator will show up here as the agent calls them.</li>`;
   setWriting(processing || (state.tool_activity || []).some((item) => item.phase === "running"));
 }
 
@@ -402,7 +463,7 @@ async function createSession(resume = false) {
   setStatus("Connecting", "neutral");
   sessionId = null;
   setState(emptyState);
-  pageDate.textContent = `Claim intake notes · ${new Date().toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  pageDate.textContent = `Mortgage call notes · ${new Date().toLocaleDateString([], { month: "short", day: "numeric" })}`;
   try {
     let payload;
     if (resume && previous) {
@@ -417,7 +478,7 @@ async function createSession(resume = false) {
     setState(payload.state);
     const health = await api("/api/health");
     window.claimAvatar?.configure(health.avatar);
-    modelLabel.textContent = `${health.live_model} · sketches by ${health.sketch_model}`;
+    modelLabel.textContent = `${health.live_model} · request team on ${health.model}`;
     setStatus(payload.has_api_key ? "Ready" : "API key required", payload.has_api_key ? "" : "danger");
     textInput.focus();
   } catch (error) {
@@ -452,7 +513,7 @@ function connectLive() {
         resolve();
       } else if (message.type === "session") {
         window.claimAvatar?.configure(message.avatar);
-        modelLabel.textContent = `${message.model} · sketches by ${message.sketch_model}`;
+        modelLabel.textContent = `${message.model} · live call`;
       } else if (message.type === "processing") {
         processing = message.active;
         render();
@@ -501,7 +562,7 @@ async function unlockAudio() {
   }
 }
 
-async function sendClaimantTurn(text) {
+async function sendCallerTurn(text) {
   const epoch = generation;
   try {
     stopPlayback();
@@ -510,7 +571,7 @@ async function sendClaimantTurn(text) {
     if (epoch !== generation) return;
     const id = crypto.randomUUID();
     liveSocket.send(JSON.stringify({ type: "text", text, id }));
-    upsertStreamingTurn("Claimant", text, true, id);
+    upsertStreamingTurn("Caller", text, true, id);
     processing = true;
     render();
   } catch (error) {
@@ -571,7 +632,7 @@ function stopLiveVoice(closeSocket = true) {
   audioStream = null;
   if (closeSocket) {
     disconnectLive();
-    setStatus("Call ended — intake saved for reconnect", "neutral");
+    setStatus("Call ended — notes kept for reconnect", "neutral");
   }
 }
 
@@ -596,10 +657,10 @@ async function startCamera() {
     cameraButton.classList.add("active");
     cameraButton.querySelector(".round-label").textContent = "Stop camera";
     frameTimer = window.setInterval(sendFrame, FRAME_INTERVAL_MS);
-    if (!isRecording) setStatus("Camera on, agent can see", "");
+    if (!isRecording) setStatus("Camera on, hold up a document", "");
   } catch (error) {
     const denied = error.name === "NotAllowedError" || /denied|permission/i.test(error.message);
-    appendSystem(denied ? "Camera access was denied. Allow it for this site to show the damage." : `Camera failed: ${error.message}`);
+    appendSystem(denied ? "Camera access was denied. Allow it for this site to show a document." : `Camera failed: ${error.message}`);
     stopCamera();
   } finally { cameraPending = false; }
 }
@@ -613,10 +674,10 @@ function stopCamera() {
   cameraPreview.srcObject = null;
   cameraStage.hidden = true;
   cameraButton.classList.remove("active");
-  cameraButton.querySelector(".round-label").textContent = "Show camera";
+  cameraButton.querySelector(".round-label").textContent = "Show document";
   if (wasOn && liveSocket?.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ type: "camera_state", enabled: false }));
-    if (!isRecording) setStatus("Camera off, describing the scene", "");
+    if (!isRecording) setStatus("Camera off", "");
   }
 }
 
@@ -682,8 +743,10 @@ textForm.addEventListener("submit", (event) => {
   const value = textInput.value.trim();
   if (!value) return;
   textInput.value = "";
-  sendClaimantTurn(value);
+  sendCallerTurn(value);
 });
+pinboardEl.addEventListener("mousemove", onChartHover);
+pinboardEl.addEventListener("mouseleave", onChartHover);
 document.querySelector("#openPacket").addEventListener("click", () => packetDialog.showModal());
 document.querySelector("#closePacket").addEventListener("click", () => packetDialog.close());
 if (window.claimAvatar) {

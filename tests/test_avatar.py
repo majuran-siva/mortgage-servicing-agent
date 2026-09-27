@@ -1,4 +1,4 @@
-"""Avatar transport preserves claim configuration and separates output media."""
+"""Avatar transport preserves request configuration and separates output media."""
 import os
 import struct
 import tempfile
@@ -29,13 +29,13 @@ class AvatarConfigTests(unittest.TestCase):
             client.assert_called_once()
 
     def test_avatar_client_is_separate_and_uses_adc(self):
-        with patch.dict(os.environ, {'FNOL_AVATAR_PROJECT': 'test-project', 'FNOL_AVATAR_LOCATION': 'us-central1'}), patch.object(server, 'AVATAR_CLIENT', None), patch('google.genai.Client') as client, patch.object(server, '_client') as voice:
+        with patch.dict(os.environ, {'MORTGAGE_AVATAR_PROJECT': 'test-project', 'MORTGAGE_AVATAR_LOCATION': 'us-central1'}), patch.object(server, 'AVATAR_CLIENT', None), patch('google.genai.Client') as client, patch.object(server, '_client') as voice:
             server._live_client(True)
             client.assert_called_once_with(vertexai=True, project='test-project', location='us-central1')
             voice.assert_not_called()
 
     def test_health_does_not_advertise_partial_configuration(self):
-        with patch.dict(os.environ, {'FNOL_AVATAR_PROJECT': '', 'FNOL_AVATAR_NAME': 'Ben'}):
+        with patch.dict(os.environ, {'MORTGAGE_AVATAR_PROJECT': '', 'MORTGAGE_AVATAR_NAME': 'Ben'}):
             self.assertFalse(server.health()['avatar']['enabled'])
 
     def test_custom_portrait_and_matched_voice_are_sent(self):
@@ -65,7 +65,7 @@ class AvatarConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             reference = Path(directory) / 'reference.png'
             reference.write_bytes(png)
-            with patch.dict(os.environ, {'FNOL_AVATAR_IMAGE': str(reference)}):
+            with patch.dict(os.environ, {'MORTGAGE_AVATAR_IMAGE': str(reference)}):
                 data = server.avatar_reference()
             self.assertEqual(data, png)
 

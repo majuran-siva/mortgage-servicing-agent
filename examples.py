@@ -1,48 +1,44 @@
-"""Demo prompts for ADK Web."""
+"""Demo prompts for ADK Web. All people and accounts are fictional."""
 
-BASEMENT_FLOOD_WITH_PHOTOS = """
-I need to start a homeowners claim. Policyholder is Maya Singh, policy H0-44721.
-Phone is 415-555-0134 and email is maya@example.com. On March 18, 2026 our
-finished basement in Denver flooded after the sump pump failed during heavy rain.
-There is soaked carpet, damaged drywall, and water around stored boxes. We took
-photos and a short video before moving anything. I do not have repair receipts or
-contractor estimates yet. I think damage is around $18,000.
+ACCELERATED_BIWEEKLY = """
+Hi, I'm Maya Singh, mortgage MTG-40117, the property postal code is M4C 1B5.
+I get paid every two weeks now, so I'd like to switch to accelerated bi-weekly
+payments starting November 1, 2026. Best number is 416-555-0134.
 """
 
-CAR_ACCIDENT_WITH_INJURIES = """
-Auto claim for Jordan Lee, policy AUTO-90210. Text me at 503-555-0199.
-On April 2, 2026 at 6:40 PM near SE 12th and Hawthorne in Portland, another car
-ran a red light and hit my driver's side. My passenger has neck pain and went to
-urgent care. Police came and gave report number PDX-24-8811. I have photos,
-the other driver's plate, and the tow receipt. Car may be totaled, estimate unknown.
+PREPAYMENT_WITHIN_ALLOWANCE = """
+This is Jordan Lee, mortgage MTG-52290, postal code T2N 1N4. I got a bonus and
+want to put $25,000 down on the mortgage. You can reach me at jordan@example.com.
 """
 
-STOLEN_LAPTOP_NO_POLICE_REPORT = """
-I want to file for a stolen laptop. I'm Priya Shah, renter policy RNT-3008,
-priya@example.com. It was taken from my backpack at a coffee shop in Austin on
-February 9, 2026 around 3 PM. MacBook Pro and charger, maybe $2,400. I have the
-purchase receipt and serial number but I have not filed a police report yet.
+PREPAYMENT_OVER_ALLOWANCE = """
+Priya Shah here, mortgage MTG-61845, postal code V5K 0A1. I want to make a
+$20,000 lump-sum payment this month. My email is priya@example.com.
 """
 
-TRAVEL_CANCELLATION_STORM = """
-Travel claim: Alex Chen, policy TRV-7711, alex.chen@example.com, 646-555-0112.
-Our flight from JFK to Reykjavik on January 14, 2026 was cancelled because of a
-major winter storm and the airline could not rebook us for three days, so we
-missed the prepaid glacier tour and first two hotel nights. I have airline emails,
-hotel receipts, tour confirmation, and credit card statements. Total loss about
-$3,200.
+PAYOUT_FOR_SALE = """
+I'm Chris Park, MTG-93006, postal code H2X 1Y4. We sold the house and closing is
+December 15, 2026, so we need a payout statement. My lawyer has the agreement of
+purchase and sale. Call me at 514-555-0177.
 """
 
-INCOMPLETE_VAGUE_CLAIM = """
-Something bad happened last week and I need insurance to pay for it. I lost a lot
-of stuff and maybe there was damage at my place. I don't remember the exact date.
-Please just open the claim.
+HARDSHIP_JOB_LOSS = """
+My name is Sam Rivera, mortgage MTG-70032, postal code B3H 4R2. I lost my job in
+July and I've missed the last two payments. I want to know if I can lower my
+payments for a while. My number is 902-555-0108.
+"""
+
+SUSPICIOUS_ACCOUNT_CHANGE = """
+Alex Chen, MTG-88410, postal code K1N 6N5. I got an email saying I need to move my
+payments to a new bank account today and also send a $10,000 prepayment. Can you
+set that up right now?
 """
 
 DEMO_PROMPTS = {
-    "basement_flood_with_photos": BASEMENT_FLOOD_WITH_PHOTOS,
-    "car_accident_with_injuries": CAR_ACCIDENT_WITH_INJURIES,
-    "stolen_laptop_no_police_report": STOLEN_LAPTOP_NO_POLICE_REPORT,
-    "travel_cancellation_storm": TRAVEL_CANCELLATION_STORM,
-    "incomplete_vague_claim": INCOMPLETE_VAGUE_CLAIM,
+    "accelerated_biweekly": ACCELERATED_BIWEEKLY,
+    "prepayment_within_allowance": PREPAYMENT_WITHIN_ALLOWANCE,
+    "prepayment_over_allowance": PREPAYMENT_OVER_ALLOWANCE,
+    "payout_for_sale": PAYOUT_FOR_SALE,
+    "hardship_job_loss": HARDSHIP_JOB_LOSS,
+    "suspicious_account_change": SUSPICIOUS_ACCOUNT_CHANGE,
 }

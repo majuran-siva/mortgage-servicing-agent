@@ -1,4 +1,4 @@
-"""AI Insurance Claim Intake Agent."""
+"""Mortgage servicing live agent team."""
 
 from .agent import root_agent
 

@@ -153,7 +153,7 @@
     configure(settings) {
       enabled = Boolean(settings?.enabled && supported);
       stage.hidden = !enabled;
-      name.textContent = enabled ? `${settings.name} · Claim assistant` : 'Claim assistant';
+      name.textContent = enabled ? `${settings.name} · Mortgage assistant` : 'Mortgage assistant';
       label(enabled ? 'Start a conversation when you’re ready' : 'Voice assistant · ready when you are');
     },
     connecting() { label(enabled ? 'Connecting your avatar…' : 'Connecting…', 'connecting'); },

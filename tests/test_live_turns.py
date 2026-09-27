@@ -97,7 +97,7 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(stopped, final)
 
     async def test_initial_visible_greeting_is_restored_without_triggering_speech(self):
-        greeting = 'Are you and everyone else in a safe place?'
+        greeting = 'What can I help you with today?'
         _, _, context = await self.run_events([event(turn_complete=True)], initial=greeting)
         self.assertEqual(len(context), 1)
         self.assertTrue(context[0]['turn_complete'])
@@ -111,7 +111,7 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
                              'START_OF_ACTIVITY_INTERRUPTS')
 
     def test_name_hints_apply_to_input_only_in_voice_and_avatar_calls(self):
-        with patch.dict(os.environ, {'FNOL_TRANSCRIPTION_VOCABULARY': ' Maya Chen, Chen, ,Chen '}):
+        with patch.dict(os.environ, {'MORTGAGE_TRANSCRIPTION_VOCABULARY': ' Maya Chen, Chen, ,Chen '}):
             for name in ['', 'Kira']:
                 config = build_live_config(avatar_name=name)
                 self.assertEqual(config.input_audio_transcription.custom_vocabulary,
@@ -119,7 +119,7 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNone(config.output_audio_transcription.custom_vocabulary)
                 self.assertNotIn('Maya Chen', config.system_instruction)
 
-    async def test_idle_avatar_frames_do_not_split_spoken_claimant_turn(self):
+    async def test_idle_avatar_frames_do_not_split_spoken_caller_turn(self):
         video = NS(parts=[NS(inline_data=NS(data=b'idle frame', mime_type='video/mp4'))])
         session, sent, _ = await self.run_events([
             event(input_transcription=words('My name is ')),
@@ -130,5 +130,5 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([m for m in sent if m['type'] == 'avatar_video']), 1)
 
     def test_no_name_is_assumed_without_vocabulary(self):
-        with patch.dict(os.environ, {'FNOL_TRANSCRIPTION_VOCABULARY': ''}):
+        with patch.dict(os.environ, {'MORTGAGE_TRANSCRIPTION_VOCABULARY': ''}):
             self.assertIsNone(build_live_config().input_audio_transcription.custom_vocabulary)

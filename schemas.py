@@ -1,41 +1,62 @@
-"""Structured data contracts for the insurance claim intake workflow."""
+"""Structured data contracts for the mortgage servicing request workflow."""
 
 from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-ClaimType = Literal[
-    "home_water_damage",
-    "auto_collision",
-    "theft_property_loss",
-    "health_medical_reimbursement",
-    "travel_delay_cancellation",
+RequestType = Literal[
+    "payment_change",
+    "prepayment",
+    "payout_discharge",
+    "property_tax_insurance",
+    "account_information",
+    "hardship",
+    "rate_term_change",
+    "life_event",
     "other",
 ]
 
-Severity = Literal["low", "medium", "high", "urgent"]
+Priority = Literal["low", "medium", "high", "urgent"]
 IntakeStatus = Literal["valid", "missing_info"]
 RoutingDecision = Literal[
-    "ready_for_adjuster",
-    "needs_docs",
-    "special_investigation",
-    "emergency_escalation",
-    "policy_review",
+    "ready_to_process",
+    "needs_documents",
+    "specialist_review",
+    "hardship_support",
+    "security_review",
 ]
+PaymentFrequency = Literal[
+    "monthly",
+    "semi_monthly",
+    "bi_weekly",
+    "accelerated_bi_weekly",
+    "weekly",
+    "accelerated_weekly",
+    "not specified",
+]
+CallerRole = Literal["borrower", "authorized_third_party", "other_third_party", "unknown"]
+DocumentStatus = Literal["unknown", "missing", "planned", "available", "received"]
 
 
 class EvidenceRecord(BaseModel):
     document_type: str = Field(description="Canonical document key from the extraction instructions.")
-    status: Literal["unknown", "missing", "planned", "available", "received"] = "unknown"
+    status: DocumentStatus = "unknown"
     source_turn_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
 
 
-class SafetyFact(BaseModel):
-    category: str = Field(description="injury, electrical, unsafe_housing, sewage, mold, or other immediate hazard")
+class CircumstanceFact(BaseModel):
+    """A hardship, vulnerability, or security circumstance the caller raised."""
+
+    category: str = Field(
+        description=(
+            "Hardship: job_loss, income_reduction, illness, bereavement, separation, arrears, legal_notice, distress. "
+            "Security: third_party_pressure, suspicious_message, urgent_payment_redirect, caller_not_borrower."
+        )
+    )
     status: Literal["present", "absent", "uncertain"]
     description: str
     source_turn_ids: list[str] = Field(default_factory=list)
@@ -46,125 +67,134 @@ class FactSource(BaseModel):
     source_turn_ids: list[str] = Field(default_factory=list)
 
 
-class ClaimNarrative(BaseModel):
-    """Normalized facts extracted from a messy claim narrative."""
+class RequestedChanges(BaseModel):
+    """What the caller wants changed. Unset values mean the caller did not ask for that change."""
 
-    policyholder_name: str = Field(description="Name of the policyholder or claimant.")
-    policy_number: str = Field(description="Policy or member number if supplied.")
-    contact_method: str = Field(description="Best available phone, email, or mailing contact.")
-    date_of_loss: str = Field(description="Exact loss date in YYYY-MM-DD format, or not specified.")
-    reported_date: str = Field(description="Date the claimant says they are reporting, if supplied.")
-    loss_location: str = Field(description="City, address, intersection, facility, or travel route.")
-    loss_description: str = Field(description="Plain-language description of what happened.")
-    estimated_loss_usd: Optional[float] = Field(
-        default=None, ge=0, allow_inf_nan=False,
-        description="Estimated financial loss in USD when supplied.",
-    )
-    injuries_or_safety_concerns: list[str] = Field(default_factory=list)
-    parties_involved: list[str] = Field(default_factory=list)
-    evidence_available: list[str] = Field(default_factory=list)
+    new_payment_amount_cad: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    new_payment_frequency: PaymentFrequency = "not specified"
+    new_payment_day: str = Field(default="not specified", description="Requested payment day or date, e.g. '15th of the month' or 'Fridays'.")
+    skip_payment: bool = False
+    prepayment_amount_cad: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    payout_date: str = Field(default="not specified", description="Requested payout or closing date as YYYY-MM-DD.")
+    payout_reason: str = Field(default="not specified", description="sale, switching lenders, paying off, refinancing, or not specified.")
+    new_bank_account: bool = Field(default=False, description="True only if the caller wants payments drawn from a different bank account.")
+    effective_date: str = Field(default="not specified", description="When the change should take effect, YYYY-MM-DD.")
+
+    # Gemini's response schema has no exclusiveMinimum, so a zero amount means "not asked for".
+    @field_validator("new_payment_amount_cad", "prepayment_amount_cad")
+    @classmethod
+    def _zero_is_unset(cls, value: Optional[float]) -> Optional[float]:
+        return None if value == 0 else value
+
+
+class ServiceRequest(BaseModel):
+    """Normalized facts extracted from a mortgage servicing call."""
+
+    borrower_name: str = Field(description="Caller's full name as they say it appears on the mortgage.")
+    mortgage_number: str = Field(description="Mortgage account number if supplied.")
+    property_postal_code: str = Field(description="Postal code of the mortgaged property, used for verification.")
+    caller_role: CallerRole = "unknown"
+    contact_method: str = Field(description="Best phone number or email for follow-up.")
+    request_summary: str = Field(description="Plain-language description of what the caller wants.")
+    requested_changes: RequestedChanges = Field(default_factory=RequestedChanges)
+    circumstances: list[CircumstanceFact] = Field(default_factory=list)
     documents_mentioned: list[str] = Field(default_factory=list)
-    missing_or_uncertain_facts: list[str] = Field(default_factory=list)
-    raw_narrative_summary: str = Field(description="Short factual summary of the source narrative.")
-    assumptions: list[str] = Field(default_factory=list)
     evidence_records: list[EvidenceRecord] = Field(default_factory=list)
-    safety_facts: list[SafetyFact] = Field(default_factory=list)
+    missing_or_uncertain_facts: list[str] = Field(default_factory=list)
+    raw_summary: str = Field(description="Short factual summary of the call so far.")
+    assumptions: list[str] = Field(default_factory=list)
     fact_sources: list[FactSource] = Field(default_factory=list)
 
 
 class FieldValidation(BaseModel):
-    """Deterministic validation of minimum claim intake information."""
+    """Deterministic validation of minimum request information."""
 
     intake_status: IntakeStatus
     missing_fields: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
-    ready_for_policy_review: bool
+    identity_verified: bool = False
 
 
-class ClaimClassification(BaseModel):
-    """LLM classification of claim type and operational severity."""
+class RequestClassification(BaseModel):
+    """LLM classification of request type and operational priority."""
 
-    claim_type: ClaimType
-    severity: Severity
-    severity_rationale: str
-    likely_policy_line: str
-    loss_drivers: list[str] = Field(default_factory=list)
-    claimant_needs: list[str] = Field(default_factory=list)
+    request_type: RequestType
+    secondary_request_types: list[RequestType] = Field(default_factory=list)
+    priority: Priority
+    priority_rationale: str
+    customer_needs: list[str] = Field(default_factory=list)
 
 
-class EvidenceRuleFinding(BaseModel):
-    """Deterministic finding generated by coverage, evidence, or routing rules."""
+class RuleFinding(BaseModel):
+    """Deterministic finding generated by servicing rules."""
 
     rule_id: str
-    severity: Severity
+    severity: Priority
     message: str
     required_action: Literal[
         "collect_info",
         "collect_document",
-        "adjuster_review",
-        "siu_review",
-        "emergency_escalation",
+        "specialist_review",
+        "hardship_referral",
+        "security_review",
+        "note",
     ]
     document: Optional[str] = None
 
 
-class CoverageEvidenceDecision(BaseModel):
-    """Deterministic routing output after coverage and evidence gates."""
+class ServicingDecision(BaseModel):
+    """Deterministic routing output after servicing rules."""
 
     routing_decision: RoutingDecision
-    provisional_coverage_considerations: list[str] = Field(default_factory=list)
+    servicing_notes: list[str] = Field(default_factory=list)
     required_documents: list[str] = Field(default_factory=list)
-    findings: list[EvidenceRuleFinding] = Field(default_factory=list)
+    findings: list[RuleFinding] = Field(default_factory=list)
     audit_trail: list[str] = Field(default_factory=list)
 
 
 class DocumentChecklistItem(BaseModel):
-    """One claimant-facing checklist item."""
-
     item: str
     reason: str
     priority: Literal["required", "recommended", "conditional"]
     already_provided: bool = False
-    status: Literal["unknown", "missing", "planned", "available", "received"] = "unknown"
+    status: DocumentStatus = "unknown"
     evidence_ids: list[str] = Field(default_factory=list)
 
 
 class DocumentChecklist(BaseModel):
-    """Generated document checklist for the claim packet."""
-
     items: list[DocumentChecklistItem] = Field(default_factory=list)
-    claimant_tip: str
+    customer_tip: str
 
 
-class FraudSafetySignal(BaseModel):
-    """Deterministic SIU, fraud-pattern, and safety signal."""
+class GateSignal(BaseModel):
+    """Deterministic security or hardship signal."""
 
     signal_id: str
-    severity: Severity
+    severity: Priority
     message: str
-    route_to_siu: bool = False
-    route_to_emergency: bool = False
+    route_to_security: bool = False
+    route_to_hardship: bool = False
 
 
-class FraudSafetyGate(BaseModel):
-    """Final deterministic safety and fraud routing gate."""
+class SecurityHardshipGate(BaseModel):
+    """Final deterministic security and hardship routing gate."""
 
     final_routing_decision: RoutingDecision
-    signals: list[FraudSafetySignal] = Field(default_factory=list)
+    signals: list[GateSignal] = Field(default_factory=list)
     audit_trail: list[str] = Field(default_factory=list)
 
 
-class ClaimIntakePacket(BaseModel):
-    """Final polished packet returned to ADK Web."""
+class ServiceRequestPacket(BaseModel):
+    """Final packet handed to a servicing specialist."""
 
-    claim_type: ClaimType
+    request_type: RequestType
     intake_status: IntakeStatus
-    severity: Severity
+    priority: Priority
     routing_decision: RoutingDecision
     missing_information: list[str] = Field(default_factory=list)
     required_documents: list[DocumentChecklistItem] = Field(default_factory=list)
-    coverage_considerations: list[str] = Field(default_factory=list)
-    adjuster_handoff_summary: str
-    claimant_next_message: str
+    servicing_notes: list[str] = Field(default_factory=list)
+    specialist_handoff_summary: str
+    customer_next_message: str
     audit_trail: list[str] = Field(default_factory=list)
     markdown: str
