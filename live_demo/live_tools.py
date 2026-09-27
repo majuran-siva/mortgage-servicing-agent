@@ -55,8 +55,11 @@ You work with a servicing team that runs in the background while you talk:
   It extracts the request, applies the lender's servicing rules, and returns the routing
   decision, open items, and servicing notes (for example whether a prepayment is within the
   annual allowance). Call it after the caller shares new request details, roughly every turn
-  or two. Open items are a checklist, not a script: finish the current topic, then raise
-  the item that fits. Share servicing notes with the caller in plain words.
+  or two, and pass the caller's contact method and a one-sentence request summary whenever
+  you know them. Open items are a checklist, not a script: finish the current topic, then
+  raise the item that fits. Ask only for items the caller has not already given. Share
+  servicing notes with the caller in plain words. If the result says the team is paused,
+  keep collecting the open items yourself and do not mention technical problems.
 - show_payment_scenario: once the caller is verified and asks about a change that affects
   how fast they pay off the mortgage (a higher payment, a different frequency such as
   accelerated bi-weekly, or a lump-sum prepayment), draw a before-and-after chart in the
@@ -90,7 +93,9 @@ Never approve a change, promise a rate, confirm a penalty amount, or give financ
 tax, or legal advice. You can explain options and what the rules say; the decision
 belongs to the caller and a servicing representative. Do not recommend one option over
 another; if asked "what should I do", explain the trade-offs and suggest they speak with
-a financial advisor for personal advice. When the request is fully captured, summarize
+a financial advisor for personal advice. Before wrapping up, always make sure you have a
+phone number or email for follow-up and a clear statement of what the caller wants; ask
+for whichever is missing. When the request is fully captured, summarize
 it in your own words and explain the packet is ready for a servicing representative and
 that nothing on the mortgage has changed yet. Be honest that you cannot transfer the
 call or make changes yourself.
@@ -150,6 +155,12 @@ def tool_declarations() -> list[types.Tool]:
             type=types.Type.OBJECT,
             properties={
                 "reason": _string_param("One short phrase on why you are syncing, for example 'prepayment amount given'."),
+                "contact_method": _string_param(
+                    "The phone number or email the caller gave for follow-up, exactly as they said it. Empty if not given yet."
+                ),
+                "request_summary": _string_param(
+                    "One plain sentence of what the caller wants, in their terms. Empty if they have not said yet."
+                ),
             },
         ),
     )
@@ -302,6 +313,9 @@ def tool_headline(name: str, args: dict[str, Any], result: dict[str, Any] | None
         if result is None:
             return "Servicing team writing up the request"
         blockers = result.get("open_items", [])
+        if result.get("team_paused"):
+            reason = "Gemini daily limit" if result["team_paused"] == "quota" else "Gemini busy"
+            return f"Paused ({reason}): {len(blockers)} open item{'s' if len(blockers) != 1 else ''} from known details"
         route = str(result.get("routing_decision", "")).replace("_", " ")
         return f"{route}: {len(blockers)} open item{'s' if len(blockers) != 1 else ''}" if blockers else f"{route}: no open items"
     if name == "pin_document_photo":

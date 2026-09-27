@@ -306,7 +306,7 @@ class VerifiedIdentityTests(unittest.TestCase):
         session = s.IntakeSession('id', verified_identity=dict(self.IDENTITY))
         missed = workflow(request(borrower_name='not specified', property_postal_code='not specified'))
         self.assertIn('property_postal_code', missed['field_validation']['missing_fields'])
-        patched = s._with_verified_identity(session, missed)
+        patched = s._with_known_facts(session, missed)
         self.assertTrue(patched['field_validation']['identity_verified'])
         for key in s.IDENTITY_FIELDS:
             self.assertNotIn(key, patched['field_validation']['missing_fields'])
@@ -323,11 +323,36 @@ class VerifiedIdentityTests(unittest.TestCase):
     def test_correction_to_another_mortgage_is_not_overwritten(self):
         session = s.IntakeSession('id', verified_identity=dict(self.IDENTITY))
         other = workflow(request(mortgage_number='MTG-52290', borrower_name='not specified'))
-        self.assertIs(s._with_verified_identity(session, other), other)
+        self.assertIs(s._with_known_facts(session, other), other)
 
     def test_without_verification_nothing_is_filled(self):
         w = workflow(request(property_postal_code='not specified'))
-        self.assertIs(s._with_verified_identity(s.IntakeSession('id'), w), w)
+        self.assertIs(s._with_known_facts(s.IntakeSession('id'), w), w)
+
+
+class AgentNoteTests(unittest.TestCase):
+    def test_agent_notes_fill_contact_and_request_when_extraction_missing(self):
+        session = s.IntakeSession('n', verified_identity=dict(VerifiedIdentityTests.IDENTITY),
+                                  agent_notes={'contact_method': '416-555-0134', 'request_summary': 'Switch to accelerated bi-weekly payments.'})
+        ui = s._current_ui_state(session)
+        self.assertEqual(ui['missing_blockers'], [])
+        self.assertEqual(ui['fields']['contact']['value'], '416-555-0134')
+
+    def test_extraction_wins_over_agent_notes(self):
+        session = s.IntakeSession('n', agent_notes={'contact_method': 'old@example.com'})
+        patched = s._with_known_facts(session, workflow(request(contact_method='new@example.com')))
+        self.assertEqual(patched['normalized_request']['contact_method'], 'new@example.com')
+
+    def test_paused_team_result_lists_remaining_items(self):
+        session = s.IntakeSession('n', verified_identity=dict(VerifiedIdentityTests.IDENTITY))
+        result = s.paused_team_result(session, 'quota')
+        self.assertEqual(result['team_paused'], 'quota')
+        self.assertEqual(result['open_items'], ['contact_method', 'request_summary'])
+        self.assertNotIn('error', result)
+        session.agent_notes = {'contact_method': 'maya@example.com', 'request_summary': 'Change payment frequency.'}
+        paused = s.paused_team_result(session, 'quota')
+        self.assertEqual(paused['open_items'], [])
+        self.assertEqual(paused['routing_decision'], 'needs_documents')
 
 
 class UpdateFailureTests(unittest.TestCase):

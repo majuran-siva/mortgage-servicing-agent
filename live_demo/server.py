@@ -169,6 +169,7 @@ class IntakeSession:
     route: str = "needs_documents"
     mortgage_record: dict[str, Any] | None = None
     verified_identity: dict[str, str] | None = None
+    agent_notes: dict[str, str] = field(default_factory=dict)
     update_failure: str | None = None
     live_model: str | None = None
     tool_activity: list[dict[str, Any]] = field(default_factory=list)
@@ -470,14 +471,11 @@ UPDATE_FAILURE_NOTICES = {
     "busy": "Gemini is busy right now, so the notes didn't update. They'll catch up after the caller's next turn.",
     "other": "The request update failed. Your conversation is kept; ask the agent to retry the update.",
 }
-UPDATE_FAILURE_TOOL_ERRORS = {
-    "quota": (
-        "The notes service has reached its daily limit. Do not call sync_service_request again this call. "
-        "Keep helping the caller and let them know a representative will confirm the details."
-    ),
-    "busy": "The notes service is busy. Retry sync_service_request after the caller's next turn.",
-    "other": "Request update failed. Retry sync_service_request.",
-}
+PAUSED_TEAM_NOTE = (
+    "The servicing team could not read the call just now, so this checklist comes only from verified "
+    "account details and the contact method and request summary you passed. Keep collecting the open "
+    "items yourself, asking only for ones the caller has not already given. Do not mention technical problems."
+)
 
 
 def classify_update_failure(exc: BaseException) -> str:
@@ -506,28 +504,47 @@ def update_failure_notice(session: IntakeSession, kind: str) -> str | None:
 IDENTITY_FIELDS = ("borrower_name", "mortgage_number", "property_postal_code")
 
 
-def _with_verified_identity(session: IntakeSession, workflow: dict[str, Any]) -> dict[str, Any]:
-    """Fill identity details the extraction missed from a verified lookup, then rerun the rules.
+AGENT_NOTE_FIELDS = ("contact_method", "request_summary")
 
-    lookup_mortgage has already matched these against the mortgage record, so the checklist
-    should not keep asking for them while extraction lags or fails. Only blank fields are
-    filled, and only for the same mortgage, so a caller's later correction still wins.
+
+def _with_known_facts(session: IntakeSession, workflow: dict[str, Any]) -> dict[str, Any]:
+    """Fill details the extraction missed from facts the app already has, then rerun the rules.
+
+    Identity comes from a verified lookup_mortgage (only for the same mortgage, so a caller's
+    later correction still wins). Contact method and request summary come from what the live
+    agent passed to sync_service_request. Only blank fields are filled, so the extraction
+    takes over again whenever it has the answer.
     """
 
-    identity = session.verified_identity
-    if not identity:
-        return workflow
     request = dict(workflow["normalized_request"])
+    filled: dict[str, str] = {}
+    identity = session.verified_identity
     extracted_number = str(request.get("mortgage_number", ""))
-    if _status(extracted_number) == "complete" and normalize_mortgage_number(extracted_number) != normalize_mortgage_number(identity["mortgage_number"]):
+    if identity and not (
+        _status(extracted_number) == "complete"
+        and normalize_mortgage_number(extracted_number) != normalize_mortgage_number(identity["mortgage_number"])
+    ):
+        filled.update({key: identity[key] for key in IDENTITY_FIELDS if _status(request.get(key)) != "complete"})
+    filled.update({
+        key: session.agent_notes[key]
+        for key in AGENT_NOTE_FIELDS
+        if session.agent_notes.get(key) and _status(request.get(key)) != "complete"
+    })
+    if not filled:
         return workflow
-    blanks = [key for key in IDENTITY_FIELDS if _status(request.get(key)) != "complete"]
-    if not blanks:
-        return workflow
-    request.update({key: identity[key] for key in blanks})
-    if request.get("caller_role", "unknown") == "unknown":
+    request.update(filled)
+    if identity and request.get("caller_role", "unknown") == "unknown":
         request["caller_role"] = "borrower"
+    if _status(request.get("raw_summary")) != "complete" and "request_summary" in filled:
+        request["raw_summary"] = filled["request_summary"]
     return run_rule_steps(request, workflow["request_classification"])
+
+
+def paused_team_result(session: IntakeSession, kind: str) -> dict[str, Any]:
+    """What the live agent hears when the request writer is unavailable: the checklist from known facts."""
+
+    known = _with_known_facts(session, session.last_workflow or build_initial_workflow_state())
+    return {**summarize_workflow_for_voice(known), "team_paused": kind, "note": PAUSED_TEAM_NOTE}
 
 
 async def _run_workflow_cached(session: IntakeSession) -> dict[str, Any]:
@@ -536,7 +553,7 @@ async def _run_workflow_cached(session: IntakeSession) -> dict[str, Any]:
             revision = session.revision
             key = str(revision)
             if session.last_workflow is not None and session.last_workflow_key == key:
-                return _with_verified_identity(session, session.last_workflow)
+                return _with_known_facts(session, session.last_workflow)
             text = _intake_text(session)
             received = [{"id": p["id"], "document_types": p.get("document_types", [])} for p in session.evidence_photos]
             workflow = await asyncio.wait_for(run_request_workflow(text, session_id=session.session_id, received_evidence=received), 75)
@@ -546,7 +563,7 @@ async def _run_workflow_cached(session: IntakeSession) -> dict[str, Any]:
                 continue
             session.last_workflow_key = key
             session.last_workflow = workflow
-            workflow = _with_verified_identity(session, workflow)
+            workflow = _with_known_facts(session, workflow)
             _attach_mortgage_from_request(session, workflow)
             return workflow
         raise asyncio.CancelledError()
@@ -789,7 +806,7 @@ def _current_ui_state(session: IntakeSession) -> dict[str, Any]:
     """Rebuild the UI state from the cached workflow without re-running the graph."""
 
     workflow = session.last_workflow or build_initial_workflow_state()
-    return _state_from_workflow(session, _with_verified_identity(session, workflow))
+    return _state_from_workflow(session, _with_known_facts(session, workflow))
 
 
 @app.on_event("startup")
@@ -917,9 +934,13 @@ async def live_voice(websocket: WebSocket) -> None:
                     }
                 urgent = bool(result.get("verified") and result.get("status") != "active")
             elif name == "sync_service_request":
+                for key in AGENT_NOTE_FIELDS:
+                    value = str(args.get(key, "")).strip()[:500]
+                    if value:
+                        session.agent_notes[key] = value
                 await finalize("Caller")
                 workflow = await asyncio.shield(request_update())
-                result = summarize_workflow_for_voice(workflow) if workflow else {"error": UPDATE_FAILURE_TOOL_ERRORS[session.update_failure or "other"]}
+                result = summarize_workflow_for_voice(workflow) if workflow else paused_team_result(session, session.update_failure or "other")
                 urgent = bool(result.get("security_hold") or result.get("hardship_referral"))
             elif name == "pin_document_photo":
                 result = await _pin_document_photo(session, args)

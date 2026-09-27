@@ -19,6 +19,7 @@ from typing_extensions import override
 
 try:
     from .servicing_rules import (
+        UNCLASSIFIED,
         apply_servicing_rules,
         build_service_request_packet,
         generate_document_checklist,
@@ -38,6 +39,7 @@ try:
     )
 except ImportError:
     from servicing_rules import (
+        UNCLASSIFIED,
         apply_servicing_rules,
         build_service_request_packet,
         generate_document_checklist,
@@ -95,7 +97,7 @@ def initial_classification() -> dict[str, Any]:
         "request_type": "other",
         "secondary_request_types": [],
         "priority": "medium",
-        "priority_rationale": "Waiting for the caller's request.",
+        "priority_rationale": UNCLASSIFIED,
         "customer_needs": ["Tell us what you would like to change."],
     }
 

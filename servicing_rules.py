@@ -97,6 +97,8 @@ BLOCKING_FIELD_QUESTIONS = {
 HARDSHIP_CATEGORIES = {"job_loss", "income_reduction", "illness", "bereavement", "separation", "arrears", "distress", "legal_notice"}
 SECURITY_CATEGORIES = {"third_party_pressure", "suspicious_message", "urgent_payment_redirect", "caller_not_borrower"}
 SPECIALIST_TYPES = {"rate_term_change", "life_event", "other"}
+# priority_rationale of the placeholder classification used before the model has classified the call.
+UNCLASSIFIED = "Waiting for the caller's request."
 CONTACT_CHANGE_WINDOW_DAYS = 30
 RENEWAL_WINDOW_DAYS = 120
 
@@ -336,8 +338,11 @@ def apply_servicing_rules(
         if priority == "required" and not _document_provided(key, request):
             add("DOC-001", "medium", f"Missing document: {label}. {DOCUMENTS[key][1]}", "collect_document", label)
 
-    # "other" is also the placeholder before the caller has said anything.
-    for request_type in sorted(types & SPECIALIST_TYPES if not _blank(request.request_summary) else set()):
+    # "other" is also the placeholder before the call has been classified.
+    classified = classification.priority_rationale != UNCLASSIFIED and not _blank(request.request_summary)
+    if not _blank(request.request_summary) and classification.priority_rationale == UNCLASSIFIED:
+        add("TYPE-000", "medium", "Request not classified yet; type-specific details are unchecked.", "collect_info")
+    for request_type in sorted(types & SPECIALIST_TYPES if classified else set()):
         add("TYPE-001", "medium", f"{request_type.replace('_', ' ').capitalize()} requests are handled by a mortgage specialist.", "specialist_review")
     if "hardship" in types:
         add("TYPE-002", "high", "Caller is asking for financial hardship help.", "hardship_referral")

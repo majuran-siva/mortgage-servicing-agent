@@ -345,7 +345,7 @@ function renderNeeded() {
   }
   neededListEl.innerHTML = items.length
     ? items.map((item) => `<li class="${item.cls}"><span class="tick-box"></span><span>${escapeHtml(item.text)}</span></li>`).join("")
-    : `<li class="empty">Nothing yet. The list fills in as the servicing team reads the call.</li>`;
+    : `<li class="empty">${callerHasSpoken() ? "Everything needed so far is collected." : "Nothing yet. The list fills in as the servicing team reads the call."}</li>`;
   const progress = Number(state.progress || 0);
   readinessEl.textContent = `${progress}% collected`;
   readinessEl.className = `pill ${progress >= 80 ? "" : progress >= 40 ? "warning" : "neutral"}`;
