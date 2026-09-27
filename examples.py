@@ -29,7 +29,7 @@ payments for a while. My number is 902-555-0108.
 """
 
 INSURANCE_RENEWAL_AND_PREPAYMENT = """
-Hi, this is Daniel Okafor, mortgage MTG-55408, postal code L5B 3C2. I got a
+Hi, this is Joe Smith, mortgage MTG-55408, postal code L5B 3C2. I got a
 letter saying my home insurance is expiring. I've renewed it and I have the new
 declaration page here, I can show it on camera. While I'm at it, I'd like to make
 a $15,000 lump-sum prepayment. Best number is 905-555-0162.

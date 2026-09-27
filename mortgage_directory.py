@@ -145,7 +145,7 @@ _RAW_RECORDS: list[dict[str, Any]] = [
     },
     {
         "mortgage_number": "MTG-55408",
-        "borrowers": ["Daniel Okafor"],
+        "borrowers": ["Joe Smith"],
         "property_postal_code": "L5B 3C2",
         "property_city": "Mississauga, ON",
         "product": "5-year fixed closed",

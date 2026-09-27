@@ -54,10 +54,12 @@ The agent verifies the account, notes the change, and pins a chart showing rough
 | MTG-61845 | Priya Shah | V5K 0A1 | 3-yr fixed 5.29%, monthly | $20,000 prepayment over allowance → specialist |
 | MTG-70032 | Sam Rivera | B3H 4R2 | 5-yr fixed 5.49%, in arrears | Hardship support |
 | MTG-88410 | Alex Chen | K1N 6N5 | 5-yr fixed 4.59%, contact changed 3 days ago | New bank account + prepayment → security review |
-| MTG-55408 | Daniel Okafor | L5B 3C2 | 5-yr fixed 4.39%, home insurance expires 2026-09-30 | Show the renewed insurance on camera + $15,000 prepayment |
+| MTG-55408 | Joe Smith | L5B 3C2 | 5-yr fixed 4.39%, home insurance expires 2026-09-30 | Show the renewed insurance on camera + $15,000 prepayment |
 | MTG-93006 | Chris Park, Dana Park | H2X 1Y4 | 5-yr fixed 2.39%, matures 2026-12-01 | Payout for a sale, renewal note |
 
 When a mortgage's home insurance expires within 30 days, an updated declaration page becomes a required document. Hold it up to the camera: the capture reads the policy expiry date, the agent reads it back, and the date goes into the notes and request packet.
+
+A printable sample page for this call is in [`test_documents/joe-smith-insurance-declaration.pdf`](test_documents/joe-smith-insurance-declaration.pdf) (fictional, marked as a sample).
 
 All people, addresses and accounts are fictional. `examples.py` has a typed prompt for each.
 

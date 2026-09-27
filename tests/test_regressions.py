@@ -244,20 +244,20 @@ class RuleTests(unittest.TestCase):
 
 
 class InsuranceRenewalTests(unittest.TestCase):
-    def daniel(self, **changes):
-        return request(borrower_name='Daniel Okafor', mortgage_number='MTG-55408', property_postal_code='L5B 3C2',
+    def joe(self, **changes):
+        return request(borrower_name='Joe Smith', mortgage_number='MTG-55408', property_postal_code='L5B 3C2',
                        request_summary='Show renewed insurance and make a prepayment.',
                        changes=dict(new_payment_frequency='not specified', prepayment_amount_cad=15000, **changes))
 
     def test_expiring_insurance_requires_declaration_page(self):
-        w = workflow(self.daniel(), 'prepayment')
+        w = workflow(self.joe(), 'prepayment')
         items = {i['item']: i for i in w['document_checklist']['items']}
         self.assertEqual(items['Home insurance declaration page']['priority'], 'required')
         self.assertEqual(route(w), 'needs_documents')
         self.assertTrue(any('Home insurance on file' in n for n in w['servicing_decision']['servicing_notes']))
 
     def test_captured_declaration_page_completes_prepayment(self):
-        c = r.prepare_request(self.daniel(), [dict(id='ins1', document_types=['insurance_declaration'])])
+        c = r.prepare_request(self.joe(), [dict(id='ins1', document_types=['insurance_declaration'])])
         w = workflow(c, 'prepayment')
         self.assertEqual(route(w), 'ready_to_process')
         notes = w['servicing_decision']['servicing_notes']
@@ -269,7 +269,7 @@ class InsuranceRenewalTests(unittest.TestCase):
         self.assertEqual(r.insurance_days_left(record, date(2026, 9, 27)), 3)
         self.assertEqual(r.insurance_days_left(record, date(2026, 10, 2)), -2)
         self.assertIsNone(r.insurance_days_left({}, date(2026, 9, 27)))
-        far = r.apply_servicing_rules(self.daniel(), r.validate_required_fields(self.daniel()),
+        far = r.apply_servicing_rules(self.joe(), r.validate_required_fields(self.joe()),
                                       dict(request_type='prepayment', priority='low', priority_rationale='x'), today=date(2026, 6, 1))
         self.assertFalse(any('Home insurance' in n for n in far['servicing_notes']))
         self.assertNotIn('Home insurance declaration page', far['required_documents'])
@@ -473,7 +473,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_insurance_capture_reads_expiry_date(self):
         session = s.IntakeSession('frame', last_frame=b'FRAME', last_frame_at=time.monotonic(),
-                                  mortgage_record=lookup_mortgage('MTG-55408', 'Daniel Okafor', 'L5B 3C2'))
+                                  mortgage_record=lookup_mortgage('MTG-55408', 'Joe Smith', 'L5B 3C2'))
         async def model(**kwargs):
             return NS(text=json.dumps(dict(observation='Home insurance declaration page for the Mississauga property.',
                                            supports_caller_description=True, document_types=['insurance_declaration'],
