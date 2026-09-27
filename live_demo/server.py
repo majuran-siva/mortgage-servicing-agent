@@ -64,6 +64,7 @@ from agent import (  # noqa: E402
     blank_request,
     build_initial_workflow_state,
     run_request_workflow,
+    run_rule_steps,
 )
 from schemas import RequestClassification, ServiceRequest  # noqa: E402
 from mortgage_directory import account_view, find_mortgage, lookup_mortgage, normalize_mortgage_number, status_headline  # noqa: E402
@@ -167,6 +168,8 @@ class IntakeSession:
     classification: dict[str, Any] | None = None
     route: str = "needs_documents"
     mortgage_record: dict[str, Any] | None = None
+    verified_identity: dict[str, str] | None = None
+    update_failure: str | None = None
     live_model: str | None = None
     tool_activity: list[dict[str, Any]] = field(default_factory=list)
     last_workflow_key: str | None = None
@@ -458,13 +461,82 @@ def _attach_mortgage_from_request(session: IntakeSession, workflow: dict[str, An
         session.scenario = None
 
 
+UPDATE_FAILURE_NOTICES = {
+    "quota": (
+        "Gemini's daily free limit is used up, so the notes and checklist can't update right now. "
+        "The call can continue. Updates resume when the limit resets (around midnight Pacific time) "
+        "or once billing is turned on for the API key."
+    ),
+    "busy": "Gemini is busy right now, so the notes didn't update. They'll catch up after the caller's next turn.",
+    "other": "The request update failed. Your conversation is kept; ask the agent to retry the update.",
+}
+UPDATE_FAILURE_TOOL_ERRORS = {
+    "quota": (
+        "The notes service has reached its daily limit. Do not call sync_service_request again this call. "
+        "Keep helping the caller and let them know a representative will confirm the details."
+    ),
+    "busy": "The notes service is busy. Retry sync_service_request after the caller's next turn.",
+    "other": "Request update failed. Retry sync_service_request.",
+}
+
+
+def classify_update_failure(exc: BaseException) -> str:
+    """Tell a Gemini quota or capacity error apart from a real failure."""
+
+    seen = []
+    while exc is not None and exc not in seen:
+        seen.append(exc)
+        text = f"{getattr(exc, 'code', '')} {exc}"
+        if "RESOURCE_EXHAUSTED" in text or text.startswith("429"):
+            return "quota"
+        if "UNAVAILABLE" in text or text.startswith("503"):
+            return "busy"
+        exc = exc.__cause__ or exc.__context__
+    return "other"
+
+
+def update_failure_notice(session: IntakeSession, kind: str) -> str | None:
+    """Caller-visible notice for a failed update. The daily-limit notice is shown once per call."""
+
+    repeat = kind == "quota" and session.update_failure == "quota"
+    session.update_failure = kind
+    return None if repeat else UPDATE_FAILURE_NOTICES[kind]
+
+
+IDENTITY_FIELDS = ("borrower_name", "mortgage_number", "property_postal_code")
+
+
+def _with_verified_identity(session: IntakeSession, workflow: dict[str, Any]) -> dict[str, Any]:
+    """Fill identity details the extraction missed from a verified lookup, then rerun the rules.
+
+    lookup_mortgage has already matched these against the mortgage record, so the checklist
+    should not keep asking for them while extraction lags or fails. Only blank fields are
+    filled, and only for the same mortgage, so a caller's later correction still wins.
+    """
+
+    identity = session.verified_identity
+    if not identity:
+        return workflow
+    request = dict(workflow["normalized_request"])
+    extracted_number = str(request.get("mortgage_number", ""))
+    if _status(extracted_number) == "complete" and normalize_mortgage_number(extracted_number) != normalize_mortgage_number(identity["mortgage_number"]):
+        return workflow
+    blanks = [key for key in IDENTITY_FIELDS if _status(request.get(key)) != "complete"]
+    if not blanks:
+        return workflow
+    request.update({key: identity[key] for key in blanks})
+    if request.get("caller_role", "unknown") == "unknown":
+        request["caller_role"] = "borrower"
+    return run_rule_steps(request, workflow["request_classification"])
+
+
 async def _run_workflow_cached(session: IntakeSession) -> dict[str, Any]:
     async with session.workflow_lock:
         while not session.deleted:
             revision = session.revision
             key = str(revision)
             if session.last_workflow is not None and session.last_workflow_key == key:
-                return session.last_workflow
+                return _with_verified_identity(session, session.last_workflow)
             text = _intake_text(session)
             received = [{"id": p["id"], "document_types": p.get("document_types", [])} for p in session.evidence_photos]
             workflow = await asyncio.wait_for(run_request_workflow(text, session_id=session.session_id, received_evidence=received), 75)
@@ -474,6 +546,7 @@ async def _run_workflow_cached(session: IntakeSession) -> dict[str, Any]:
                 continue
             session.last_workflow_key = key
             session.last_workflow = workflow
+            workflow = _with_verified_identity(session, workflow)
             _attach_mortgage_from_request(session, workflow)
             return workflow
         raise asyncio.CancelledError()
@@ -716,7 +789,7 @@ def _current_ui_state(session: IntakeSession) -> dict[str, Any]:
     """Rebuild the UI state from the cached workflow without re-running the graph."""
 
     workflow = session.last_workflow or build_initial_workflow_state()
-    return _state_from_workflow(session, workflow)
+    return _state_from_workflow(session, _with_verified_identity(session, workflow))
 
 
 @app.on_event("startup")
@@ -783,13 +856,20 @@ async def live_voice(websocket: WebSocket) -> None:
         await send({"type": "processing", "active": True})
         try:
             workflow = await _run_workflow_cached(session)
+            session.update_failure = None
             await send({"type": "state", "state": _state_from_workflow(session, workflow)})
             return workflow
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception("Request update failed")
-            await send({"type": "error", "message": "The request update failed. Your conversation is kept; ask the agent to retry the update."})
+        except Exception as exc:
+            kind = classify_update_failure(exc)
+            if kind == "other":
+                logger.exception("Request update failed")
+            else:
+                logger.warning("Request update skipped: Gemini %s", "daily quota reached" if kind == "quota" else "busy (503)")
+            notice = update_failure_notice(session, kind)
+            if notice:
+                await send({"type": "error", "message": notice})
             return None
         finally:
             with contextlib.suppress(Exception):
@@ -829,11 +909,17 @@ async def live_voice(websocket: WebSocket) -> None:
                 current = str((session.normalized_request or {}).get("mortgage_number", ""))
                 if current.lower() in {"", "not specified"} or normalize_mortgage_number(current) == normalize_mortgage_number(number):
                     session.mortgage_record = result
+                if result.get("verified"):
+                    session.verified_identity = {
+                        "borrower_name": str(args.get("borrower_name", "")).strip(),
+                        "mortgage_number": result["mortgage_number"],
+                        "property_postal_code": str(args.get("postal_code", "")).strip(),
+                    }
                 urgent = bool(result.get("verified") and result.get("status") != "active")
             elif name == "sync_service_request":
                 await finalize("Caller")
                 workflow = await asyncio.shield(request_update())
-                result = summarize_workflow_for_voice(workflow) if workflow else {"error": "Request update failed. Retry sync_service_request."}
+                result = summarize_workflow_for_voice(workflow) if workflow else {"error": UPDATE_FAILURE_TOOL_ERRORS[session.update_failure or "other"]}
                 urgent = bool(result.get("security_hold") or result.get("hardship_referral"))
             elif name == "pin_document_photo":
                 result = await _pin_document_photo(session, args)

@@ -198,3 +198,10 @@ class ServiceRequestPacket(BaseModel):
     customer_next_message: str
     audit_trail: list[str] = Field(default_factory=list)
     markdown: str
+
+
+class RequestAnalysis(BaseModel):
+    """Single model output: extracted request plus its classification."""
+
+    request: ServiceRequest
+    classification: RequestClassification

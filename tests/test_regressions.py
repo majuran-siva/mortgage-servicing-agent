@@ -236,9 +236,9 @@ class RuleTests(unittest.TestCase):
     def test_schemas_are_accepted_by_gemini(self):
         # Same conversion the SDK runs before every structured-output request.
         from google.genai import _transformers
-        from schemas import RequestClassification
+        from schemas import RequestAnalysis, RequestClassification
         client = NS(vertexai=False)
-        for model in (ServiceRequest, RequestClassification, s.FrameObservation):
+        for model in (RequestAnalysis, ServiceRequest, RequestClassification, s.FrameObservation):
             with self.subTest(model=model.__name__):
                 self.assertIsNotNone(_transformers.t_schema(client, model))
 
@@ -297,6 +297,61 @@ class ServerStateTests(unittest.TestCase):
 
     def test_redacts_long_numbers(self):
         self.assertEqual(s.redact_numbers('Account 12345678 transit 00123'), 'Account •••5678 transit 00123')
+
+
+class VerifiedIdentityTests(unittest.TestCase):
+    IDENTITY = {'borrower_name': 'Maya Singh', 'mortgage_number': 'MTG-40117', 'property_postal_code': 'M4C 1B5'}
+
+    def test_verified_lookup_fills_details_extraction_missed(self):
+        session = s.IntakeSession('id', verified_identity=dict(self.IDENTITY))
+        missed = workflow(request(borrower_name='not specified', property_postal_code='not specified'))
+        self.assertIn('property_postal_code', missed['field_validation']['missing_fields'])
+        patched = s._with_verified_identity(session, missed)
+        self.assertTrue(patched['field_validation']['identity_verified'])
+        for key in s.IDENTITY_FIELDS:
+            self.assertNotIn(key, patched['field_validation']['missing_fields'])
+        s._attach_mortgage_from_request(session, patched)
+        self.assertTrue(session.mortgage_record['verified'])
+
+    def test_no_model_output_still_counts_verified_details(self):
+        session = s.IntakeSession('id', verified_identity=dict(self.IDENTITY))
+        ui = s._current_ui_state(session)
+        for key in s.IDENTITY_FIELDS:
+            self.assertNotIn(key, ui['missing_blockers'])
+        self.assertEqual(ui['fields']['verified']['value'], 'Verified')
+
+    def test_correction_to_another_mortgage_is_not_overwritten(self):
+        session = s.IntakeSession('id', verified_identity=dict(self.IDENTITY))
+        other = workflow(request(mortgage_number='MTG-52290', borrower_name='not specified'))
+        self.assertIs(s._with_verified_identity(session, other), other)
+
+    def test_without_verification_nothing_is_filled(self):
+        w = workflow(request(property_postal_code='not specified'))
+        self.assertIs(s._with_verified_identity(s.IntakeSession('id'), w), w)
+
+
+class UpdateFailureTests(unittest.TestCase):
+    def test_classifies_quota_busy_and_other(self):
+        from google.genai import errors
+        quota = errors.ClientError(429, {'error': {'code': 429, 'message': 'You exceeded your current quota', 'status': 'RESOURCE_EXHAUSTED'}})
+        busy = errors.ServerError(503, {'error': {'code': 503, 'message': 'high demand', 'status': 'UNAVAILABLE'}})
+        self.assertEqual(s.classify_update_failure(quota), 'quota')
+        self.assertEqual(s.classify_update_failure(busy), 'busy')
+        self.assertEqual(s.classify_update_failure(ValueError('bad output')), 'other')
+        try:
+            try:
+                raise quota
+            except Exception as inner:
+                raise RuntimeError('ADK wrapper') from inner
+        except RuntimeError as wrapped:
+            self.assertEqual(s.classify_update_failure(wrapped), 'quota')
+
+    def test_daily_limit_notice_shows_once_per_call(self):
+        session = s.IntakeSession('q')
+        self.assertIn('daily free limit', s.update_failure_notice(session, 'quota'))
+        self.assertIsNone(s.update_failure_notice(session, 'quota'))
+        self.assertIn('busy', s.update_failure_notice(session, 'busy'))
+        self.assertIn('daily free limit', s.update_failure_notice(session, 'quota'))
 
 
 class ScenarioToolTests(unittest.TestCase):
