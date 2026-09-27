@@ -24,9 +24,15 @@ class AvatarConfigTests(unittest.TestCase):
         self.assertEqual(voice, avatar)
 
     def test_voice_retains_existing_client(self):
-        with patch.object(server, '_client', return_value='existing') as client:
+        with patch.dict(os.environ, {'MORTGAGE_AVATAR_PROJECT': ''}), patch.object(server, '_client', return_value='existing') as client:
             self.assertEqual(server._live_client(False), 'existing')
             client.assert_called_once()
+
+    def test_voice_only_call_uses_the_avatar_project_region(self):
+        with patch.dict(os.environ, {'MORTGAGE_AVATAR_PROJECT': 'test-project', 'MORTGAGE_AVATAR_LOCATION': 'us-central1'}), patch.object(server, 'AVATAR_CLIENT', None), patch('google.genai.Client') as client, patch.object(server, '_client') as voice:
+            server._live_client(False)
+            client.assert_called_once_with(vertexai=True, project='test-project', location='us-central1')
+            voice.assert_not_called()
 
     def test_avatar_client_is_separate_and_uses_adc(self):
         with patch.dict(os.environ, {'MORTGAGE_AVATAR_PROJECT': 'test-project', 'MORTGAGE_AVATAR_LOCATION': 'us-central1'}), patch.object(server, 'AVATAR_CLIENT', None), patch('google.genai.Client') as client, patch.object(server, '_client') as voice:

@@ -6,7 +6,8 @@
  * a cream card for the payment scenario, and the gradient-mesh band across the top.
  * Sohne is proprietary, so Inter (with ss01 and tnum) substitutes. The mesh is approximated
  * with layered CSS gradients; Stripe's own is artwork.
- * Layout: cards float over the mesh; a sticky panel on the left, call notes on the right.
+ * Layout: cards float over the mesh; a sticky live call + transcript panel on the left,
+ * the "still needed" checklist and call notes on the right.
  */
 :root {
   /* Brand */
@@ -379,25 +380,79 @@ input:focus-visible {
   background: rgba(255, 255, 255, 0.08);
 }
 
-#micButton {
-  grid-column: 1 / -1;
+/* Audio call and video call: filled indigo to start, white while in that call,
+   outlined when it offers a switch from the other call type. */
+.round-button.call-button {
   min-height: 44px;
   box-shadow: none;
   background: var(--primary);
 }
 
-#micButton:hover {
+.round-button.call-button:hover {
   background: var(--primary-soft);
 }
 
-#micButton:active {
+.round-button.call-button:active {
   background: var(--primary-press);
 }
 
 .round-button.active,
-#micButton.active {
+.round-button.call-button.active {
   background: var(--canvas);
   color: var(--primary);
+  cursor: default;
+}
+
+.round-button.call-button.alt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hairline-dark);
+}
+
+.round-button.call-button.alt:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.round-button.end-call {
+  box-shadow: none;
+  background: var(--ruby);
+}
+
+.round-button.end-call:hover {
+  background: #d11a55;
+}
+
+.round-button.end-call:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.6);
+  opacity: 1;
+}
+
+/* Small "New call" link beside the status pill. */
+.card-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--on-primary);
+}
+
+.link-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .round-button.subtle {
@@ -412,9 +467,52 @@ input:focus-visible {
 }
 
 .round-label {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   line-height: 1;
+}
+
+.icon-video,
+.icon-end {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+  position: relative;
+}
+
+/* Video camera: a body with a lens wedge on the right. */
+.icon-video::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 10px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.icon-video::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 5px;
+  border-style: solid;
+  border-width: 3px 4px 3px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+
+/* Hang up: a handset laid on its side. */
+.icon-end::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 16px;
+  height: 6px;
+  border-radius: 6px 6px 2px 2px;
+  background: currentColor;
 }
 
 .icon-mic,
@@ -507,6 +605,52 @@ input:focus-visible {
   margin-bottom: 16px;
   background: #0f1033;
   aspect-ratio: 4 / 3;
+}
+
+/* Kira and the caller's webcam share one media area. In a video call the webcam
+   sits over Kira as a picture-in-picture; for a document it is larger so the
+   caller can line the page up. Without Kira it fills the area. */
+.call-card {
+  display: grid;
+  grid-template-areas: "head" "media" "controls";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.call-card > .card-head { grid-area: head; }
+.call-card > .controls { grid-area: controls; }
+.call-card > .avatar-stage,
+.call-card > .camera-stage { grid-area: media; }
+
+.call-card > .avatar-stage:not([hidden]) + .camera-stage {
+  z-index: 2;
+  align-self: end;
+  justify-self: end;
+  width: 34%;
+  height: auto;
+  aspect-ratio: 3 / 4;
+  margin: 0 10px 26px 0;
+  box-shadow: 0 0 0 2px var(--on-primary), var(--shadow-2);
+}
+
+.call-card > .avatar-stage:not([hidden]) + .camera-stage[data-purpose="document"] {
+  width: 62%;
+  aspect-ratio: 4 / 3;
+}
+
+/* Keep Kira's name tag clear of the caller's picture-in-picture. */
+.call-card > .avatar-stage:has(+ .camera-stage:not([hidden])) .avatar-identity {
+  right: calc(34% + 18px);
+}
+
+.call-card > .avatar-stage:has(+ .camera-stage[data-purpose="document"]:not([hidden])) .avatar-identity {
+  display: none;
+}
+
+.call-card > .avatar-stage:not([hidden]) + .camera-stage .camera-tag {
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
 .camera-stage[hidden] {
@@ -1181,7 +1325,7 @@ input:focus-visible {
 @media (min-width: 1024px) {
   /* Side panel on the left, call notes on the right. */
   .desk-layout {
-    grid-template-columns: clamp(340px, 30vw, 400px) minmax(0, 1fr);
+    grid-template-columns: clamp(380px, 34vw, 480px) minmax(0, 1fr);
     align-items: start;
     padding-top: 48px;
   }
@@ -1200,11 +1344,11 @@ input:focus-visible {
   .rail .card-head { margin-bottom: 12px; }
   .rail .transcript-card { flex: 1 1 0; min-height: 180px; }
   .rail .transcript { flex: 1; min-height: 0; max-height: none; }
-  .rail .needed-card { display: flex; flex-direction: column; max-height: 32%; flex-shrink: 1; min-height: 110px; }
-  .rail .needed-list { min-height: 0; overflow: auto; }
+  /* "Still needed" sits above the notes; its list scrolls if it grows long. */
+  .main-column .needed-list { max-height: 220px; overflow: auto; }
   /* The avatar scales with screen height so the panel still fits on a laptop. */
-  .call-card .avatar-stage { height: clamp(150px, 22dvh, 280px); }
-  .call-card .camera-stage { aspect-ratio: auto; height: 180px; }
+  .call-card .avatar-stage { height: clamp(200px, 34dvh, 420px); }
+  .call-card > .avatar-stage[hidden] + .camera-stage { aspect-ratio: auto; height: 180px; }
 }
 
 /* Phones and tablets: one column, call first. */

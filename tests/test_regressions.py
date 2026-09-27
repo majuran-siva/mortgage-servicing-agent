@@ -412,7 +412,7 @@ class UpdateFailureTests(unittest.TestCase):
         dropped = errors.APIError(1011, {'error': {'code': 1011, 'message': 'The service is currently unavailable.'}})
         self.assertIn('temporarily unavailable', s.live_failure_message(dropped))
         self.assertIn('usage limit', s.live_failure_message(RuntimeError('429 RESOURCE_EXHAUSTED')))
-        self.assertIn('click Talk to reconnect', s.live_failure_message(RuntimeError('socket closed')))
+        self.assertIn('start a call again to reconnect', s.live_failure_message(RuntimeError('socket closed')))
 
     def test_daily_limit_notice_shows_once_per_call(self):
         session = s.IntakeSession('q')

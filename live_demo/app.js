@@ -9,8 +9,11 @@ const readinessEl = document.querySelector("#readiness");
 const callStatus = document.querySelector("#callStatus");
 const modelLabel = document.querySelector("#modelLabel");
 const pageDate = document.querySelector("#pageDate");
-const micButton = document.querySelector("#micButton");
+const audioCallButton = document.querySelector("#audioCallButton");
+const videoCallButton = document.querySelector("#videoCallButton");
+const endCallButton = document.querySelector("#endCallButton");
 const cameraButton = document.querySelector("#cameraButton");
+const cameraTagText = document.querySelector("#cameraTagText");
 const cameraStage = document.querySelector("#cameraStage");
 const cameraPreview = document.querySelector("#cameraPreview");
 const frameCanvas = document.querySelector("#frameCanvas");
@@ -45,6 +48,11 @@ let audioStream = null;
 let cameraStream = null;
 let frameTimer = null;
 let isRecording = false;
+// "audio": microphone only; "video": microphone and webcam. Kira's avatar shows in both.
+let callMode = null;
+let callPending = false;
+// Why the webcam is on: the caller's face in a video call, or a document during an audio call.
+let cameraPurpose = null;
 let nextPlaybackTime = 0;
 let sessionId = null;
 let state = null;
@@ -200,7 +208,7 @@ function buildNotes() {
     }
   }
   if (!notes.length) {
-    notes.push({ key: "empty", cls: "aside", text: "Waiting for the caller. Tap Talk, show a document, or type below." });
+    notes.push({ key: "empty", cls: "aside", text: "Waiting for the caller. Start an audio or video call, or type below." });
   }
   return notes;
 }
@@ -511,6 +519,7 @@ function connectLive() {
         clearTimeout(timeout);
         setStatus("Live", "");
         resolve();
+        renderCallControls();
       } else if (message.type === "session") {
         window.claimAvatar?.configure(message.avatar);
         modelLabel.textContent = `${message.model} · live call`;
@@ -549,7 +558,7 @@ function connectLive() {
       stopPlayback();
       window.claimAvatar?.reset();
       clearBusy();
-      setStatus("Disconnected — reconnect to continue", "warning");
+      setStatus("Disconnected — start a call to reconnect", "warning");
     };
   });
   return connectionPromise;
@@ -610,9 +619,8 @@ async function startLiveVoice() {
     inputSource.connect(inputProcessor);
     inputProcessor.connect(audioContext.destination);
     isRecording = true;
-    micButton.classList.add("active");
-    micButton.querySelector(".round-label").textContent = "Listening";
     setStatus("Live, listening", "");
+    renderCallControls();
   } catch (error) {
     const denied = error.name === "NotAllowedError" || /denied|permission/i.test(error.message);
     appendSystem(denied ? "Microphone access was denied. Allow it for this site or type instead." : `Voice failed: ${error.message}`);
@@ -622,8 +630,7 @@ async function startLiveVoice() {
 
 function stopLiveVoice(closeSocket = true) {
   isRecording = false;
-  micButton.classList.remove("active");
-  micButton.querySelector(".round-label").textContent = "Talk";
+  callMode = null;
   inputProcessor?.disconnect();
   inputSource?.disconnect();
   audioStream?.getTracks().forEach((track) => track.stop());
@@ -632,11 +639,12 @@ function stopLiveVoice(closeSocket = true) {
   audioStream = null;
   if (closeSocket) {
     disconnectLive();
-    setStatus("Call ended — notes kept for reconnect", "neutral");
+    setStatus("Call ended — notes kept", "neutral");
   }
+  renderCallControls();
 }
 
-async function startCamera() {
+async function startCamera(purpose = "document") {
   if (cameraPending || cameraStream) return;
   const epoch = generation;
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -647,17 +655,21 @@ async function startCamera() {
     cameraPending = true;
     await unlockAudio();
     await connectLive();
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "environment" } });
+    // Face the caller for a video call; use the back camera (on phones) for documents.
+    const facingMode = purpose === "video" ? "user" : "environment";
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode } });
     if (epoch !== generation || !liveSocket || liveSocket.readyState !== WebSocket.OPEN) { stream.getTracks().forEach(track => track.stop()); return; }
     cameraStream = stream;
     stream.getVideoTracks().forEach(track => track.addEventListener("ended", stopCamera, { once: true }));
     liveSocket.send(JSON.stringify({ type: "camera_state", enabled: true }));
+    cameraPurpose = purpose;
     cameraPreview.srcObject = cameraStream;
+    cameraStage.dataset.purpose = purpose;
+    cameraTagText.textContent = purpose === "video" ? "You" : "Hold your document steady";
     cameraStage.hidden = false;
-    cameraButton.classList.add("active");
-    cameraButton.querySelector(".round-label").textContent = "Stop camera";
     frameTimer = window.setInterval(sendFrame, FRAME_INTERVAL_MS);
     if (!isRecording) setStatus("Camera on, hold up a document", "");
+    renderCallControls();
   } catch (error) {
     const denied = error.name === "NotAllowedError" || /denied|permission/i.test(error.message);
     appendSystem(denied ? "Camera access was denied. Allow it for this site to show a document." : `Camera failed: ${error.message}`);
@@ -673,12 +685,73 @@ function stopCamera() {
   cameraStream = null;
   cameraPreview.srcObject = null;
   cameraStage.hidden = true;
-  cameraButton.classList.remove("active");
-  cameraButton.querySelector(".round-label").textContent = "Show document";
+  cameraPurpose = null;
   if (wasOn && liveSocket?.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ type: "camera_state", enabled: false }));
     if (!isRecording) setStatus("Camera off", "");
   }
+  renderCallControls();
+}
+
+async function startCall(mode) {
+  if (callPending || resetting || callMode === mode) return;
+  callPending = true;
+  renderCallControls();
+  try {
+    if (!isRecording) await startLiveVoice();
+    if (!isRecording) return;
+    callMode = mode;
+    if (mode === "video") {
+      if (!cameraStream) await startCamera("video");
+      else {
+        cameraPurpose = "video";
+        cameraStage.dataset.purpose = "video";
+        cameraTagText.textContent = "You";
+      }
+    } else if (cameraPurpose === "video") {
+      stopCamera();
+    }
+    setStatus(mode === "video" ? "Live video call" : "Live audio call", "");
+  } finally {
+    callPending = false;
+    renderCallControls();
+  }
+}
+
+function endCall() {
+  stopCamera();
+  stopLiveVoice(true);
+}
+
+function setButton(button, { label, active = false, alt = false, disabled = false, title = "" }) {
+  button.querySelector(".round-label").textContent = label;
+  button.classList.toggle("active", active);
+  button.classList.toggle("alt", alt);
+  button.disabled = disabled;
+  button.title = title;
+}
+
+function renderCallControls() {
+  const inCall = Boolean(callMode);
+  setButton(audioCallButton, {
+    label: callMode === "audio" ? "In audio call" : inCall ? "Switch to audio" : "Audio call",
+    active: callMode === "audio",
+    alt: callMode === "video",
+    disabled: callPending,
+  });
+  setButton(videoCallButton, {
+    label: callMode === "video" ? "In video call" : inCall ? "Switch to video" : "Video call",
+    active: callMode === "video",
+    alt: callMode === "audio",
+    disabled: callPending,
+  });
+  setButton(cameraButton, {
+    label: cameraStream && cameraPurpose === "document" ? "Stop showing" : "Show document",
+    active: Boolean(cameraStream && cameraPurpose === "document"),
+    disabled: callPending || callMode === "video",
+    title: callMode === "video" ? "Your camera is already on. Hold the document up to it." : "",
+  });
+  setButton(endCallButton, { label: "End call", disabled: !inCall && !liveSocket });
 }
 
 function sendFrame() {
@@ -734,8 +807,10 @@ function playPcm24(base64) {
   nextPlaybackTime = startAt + audioBuffer.duration;
 }
 
-micButton.addEventListener("click", () => (isRecording ? stopLiveVoice() : startLiveVoice()));
-cameraButton.addEventListener("click", () => (cameraStream ? stopCamera() : startCamera()));
+audioCallButton.addEventListener("click", () => startCall("audio"));
+videoCallButton.addEventListener("click", () => startCall("video"));
+endCallButton.addEventListener("click", endCall);
+cameraButton.addEventListener("click", () => (cameraStream ? stopCamera() : startCamera("document")));
 newIntakeButton.addEventListener("click", () => createSession(false));
 window.addEventListener("pagehide", disconnectLive);
 textForm.addEventListener("submit", (event) => {
@@ -752,8 +827,9 @@ document.querySelector("#closePacket").addEventListener("click", () => packetDia
 if (window.claimAvatar) {
   window.claimAvatar.onFallback = () => {
     disconnectLive();
-    setStatus("Voice mode — tap Talk to reconnect", "neutral");
+    setStatus("Voice mode — click Audio call to reconnect", "neutral");
   };
 }
 
+renderCallControls();
 createSession(true);

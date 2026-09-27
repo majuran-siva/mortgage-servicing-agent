@@ -140,7 +140,9 @@ def live_media_message(blob):
 
 
 def _live_client(avatar_enabled: bool = False):
-    if not avatar_enabled:
+    # Live calls with a Cloud avatar project always run there, with or without avatar video:
+    # the live model is regional (e.g. us-central1) even when text models use "global".
+    if not avatar_enabled and not avatar_settings()["project"]:
         return _client()
     global AVATAR_CLIENT
     if AVATAR_CLIENT is None:
@@ -511,11 +513,11 @@ def live_failure_message(exc: BaseException) -> str:
     if "1011" in text or "unavailable" in text.lower():
         return (
             "Google's live voice service dropped the call (temporarily unavailable). Your notes are kept. "
-            "Click Talk to reconnect; if it keeps happening, wait a few minutes and try again."
+            "Start a call again to reconnect; if it keeps happening, wait a few minutes and try again."
         )
     if "RESOURCE_EXHAUSTED" in text or "429" in text:
         return "The live voice service hit its usage limit. Your notes are kept; try again in a few minutes."
-    return "The live connection ended. Your notes are kept; click Talk to reconnect."
+    return "The live connection ended. Your notes are kept; start a call again to reconnect."
 
 
 def update_failure_notice(session: IntakeSession, kind: str) -> str | None:

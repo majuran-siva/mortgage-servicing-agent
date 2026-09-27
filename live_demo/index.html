@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=stripe-2" />
+    <link rel="stylesheet" href="./styles.css?v=calls-2" />
   </head>
   <body>
     <div class="desk">
@@ -27,6 +27,13 @@
 
       <main class="desk-layout">
         <div class="main-column">
+          <section class="card needed-card">
+              <div class="card-head">
+                <span class="card-kicker">Still needed</span>
+                <span id="readiness" class="pill neutral">0% collected</span>
+              </div>
+              <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
+            </section>
           <section class="notebook-wrap" aria-label="Call notebook" tabindex="0">
               <div class="notebook">
                 <div class="holes" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -48,11 +55,14 @@
               <ul id="teamFeed" class="team-feed" tabindex="0" aria-label="Servicing team activity"></ul>
             </section>
         </div>
-        <aside class="side rail" aria-label="Live call, transcript, and request checklist">
+        <aside class="side rail" aria-label="Live call and transcript">
           <section class="card call-card">
               <div class="card-head">
                 <span class="card-kicker">Live call</span>
-                <span id="callStatus" class="pill">Connecting</span>
+                <span class="card-head-actions">
+                  <span id="callStatus" class="pill">Connecting</span>
+                  <button id="newIntakeButton" class="link-button" type="button" aria-label="Start a new call and clear the notes">New call</button>
+                </span>
               </div>
 
               <div id="avatarStage" class="avatar-stage" data-state="idle" hidden>
@@ -67,21 +77,25 @@
 
               <div id="cameraStage" class="camera-stage" hidden>
                 <video id="cameraPreview" autoplay muted playsinline></video>
-                <span class="camera-tag"><span class="rec-dot" aria-hidden="true"></span> Agent is watching</span>
+                <span class="camera-tag"><span class="rec-dot" aria-hidden="true"></span> <span id="cameraTagText">You</span></span>
               </div>
 
               <div class="controls">
-                <button id="micButton" class="round-button" type="button" aria-label="Start live voice">
+                <button id="audioCallButton" class="round-button call-button" type="button" aria-label="Start an audio call: your microphone, no webcam">
                   <span class="icon-mic" aria-hidden="true"></span>
-                  <span class="round-label">Talk</span>
+                  <span class="round-label">Audio call</span>
+                </button>
+                <button id="videoCallButton" class="round-button call-button" type="button" aria-label="Start a video call: your microphone and webcam">
+                  <span class="icon-video" aria-hidden="true"></span>
+                  <span class="round-label">Video call</span>
                 </button>
                 <button id="cameraButton" class="round-button" type="button" aria-label="Show a document on camera">
                   <span class="icon-camera" aria-hidden="true"></span>
                   <span class="round-label">Show document</span>
                 </button>
-                <button id="newIntakeButton" class="round-button subtle" type="button" aria-label="Start a new call">
-                  <span class="icon-new" aria-hidden="true"></span>
-                  <span class="round-label">New call</span>
+                <button id="endCallButton" class="round-button end-call" type="button" aria-label="End the call" disabled>
+                  <span class="icon-end" aria-hidden="true"></span>
+                  <span class="round-label">End call</span>
                 </button>
               </div>
             </section>
@@ -102,13 +116,6 @@
                 <button type="submit">Send</button>
               </form>
             </section>
-          <section class="card needed-card">
-              <div class="card-head">
-                <span class="card-kicker">Still needed</span>
-                <span id="readiness" class="pill neutral">0% collected</span>
-              </div>
-              <ul id="neededList" class="needed-list" tabindex="0" aria-label="Information still needed"></ul>
-            </section>
         </aside>
       </main>
     </div>
@@ -123,6 +130,6 @@
 
     <canvas id="frameCanvas" hidden></canvas>
     <script src="./avatar.js?v=4"></script>
-    <script src="./app.js?v=mortgage-1"></script>
+    <script src="./app.js?v=calls-1"></script>
   </body>
 </html>
