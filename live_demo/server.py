@@ -90,6 +90,10 @@ AVATAR_CLIENT = None
 logger = logging.getLogger(__name__)
 FRAME_MAX_AGE_SECONDS = 12.0
 GREETING = "Hi, I can help with changes to your mortgage or questions about your account. What can I help you with today?"
+GREETING_PROMPT = (
+    "(App notice, not the caller speaking: the call has just connected. Greet the caller now by saying "
+    f'exactly: "{GREETING}" Then stop and wait for them to answer.)'
+)
 
 
 def avatar_settings() -> dict[str, str]:
@@ -171,6 +175,7 @@ class IntakeSession:
     verified_identity: dict[str, str] | None = None
     agent_notes: dict[str, str] = field(default_factory=dict)
     update_failure: str | None = None
+    greeted: bool = False
     live_model: str | None = None
     tool_activity: list[dict[str, Any]] = field(default_factory=list)
     last_workflow_key: str | None = None
@@ -205,8 +210,13 @@ app.add_middleware(
 )
 
 
+def _uses_vertex() -> bool:
+    return os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").strip().lower() in {"1", "true", "yes"} and bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
+
+
 def _has_api_key() -> bool:
-    return bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    """True when model calls are configured: an AI Studio key, or a Google Cloud project (Vertex AI)."""
+    return _uses_vertex() or bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
 
 
 def _client():
@@ -219,7 +229,7 @@ def _client():
                 f"{APP_DIR / '.env'} and restart the live intake backend."
             ),
         )
-    if os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+    if not _uses_vertex() and os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
         os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
     try:
         from google import genai
@@ -492,6 +502,20 @@ def classify_update_failure(exc: BaseException) -> str:
             return "busy"
         exc = exc.__cause__ or exc.__context__
     return "other"
+
+
+def live_failure_message(exc: BaseException) -> str:
+    """Caller-visible message when the live voice or avatar connection drops."""
+
+    text = " ".join(str(e) for e in (exc, exc.__cause__, exc.__context__) if e)
+    if "1011" in text or "unavailable" in text.lower():
+        return (
+            "Google's live voice service dropped the call (temporarily unavailable). Your notes are kept. "
+            "Click Talk to reconnect; if it keeps happening, wait a few minutes and try again."
+        )
+    if "RESOURCE_EXHAUSTED" in text or "429" in text:
+        return "The live voice service hit its usage limit. Your notes are kept; try again in a few minutes."
+    return "The live connection ended. Your notes are kept; click Talk to reconnect."
 
 
 def update_failure_notice(session: IntakeSession, kind: str) -> str | None:
@@ -905,7 +929,7 @@ async def live_voice(websocket: WebSocket) -> None:
             if not done.cancelled():
                 error = done.exception()
                 if error:
-                    logger.error("Background request task failed: %s", type(error).__name__)
+                    logger.error("Background request task failed: %s: %s", type(error).__name__, str(error)[:500])
         task.add_done_callback(finished)
         return task
 
@@ -1022,13 +1046,20 @@ async def live_voice(websocket: WebSocket) -> None:
         avatar_enabled = avatar_description()["enabled"] and websocket.query_params.get("avatar") != "off"
         avatar_name = settings["name"] if avatar_enabled else ""
         avatar_image = avatar_reference() if avatar_enabled and settings["image"] else None
+        # On a fresh call the agent speaks the greeting that is already shown in the transcript.
+        greeting_turn = next((t for t in session.transcript if t["speaker"] == "Agent" and t["text"] == GREETING), None)
+        speak_greeting = (
+            not session.greeted
+            and greeting_turn is not None
+            and not any(t["speaker"] == "Caller" for t in session.transcript)
+        )
         history = [
             types.Content(
                 role="user" if turn["speaker"] == "Caller" else "model",
                 parts=[types.Part(text=turn["text"])],
             )
             for turn in session.transcript
-            if turn["speaker"] in {"Caller", "Agent"}
+            if turn["speaker"] in {"Caller", "Agent"} and not (speak_greeting and turn is greeting_turn)
         ]
         config = build_live_config(
             camera_enabled=session.camera_enabled, avatar_name=avatar_name,
@@ -1041,6 +1072,14 @@ async def live_voice(websocket: WebSocket) -> None:
                 # The SDK has awaited setup_complete. Close the initial-history
                 # batch without treating it as a new request for speech.
                 await live_session.send_client_content(turns=history, turn_complete=True)
+            if speak_greeting:
+                # Stream the spoken greeting into the existing greeting turn instead of adding a copy.
+                session.greeted = True
+                pending["Agent"]["id"] = greeting_turn["id"]
+                await live_session.send_client_content(
+                    turns=types.Content(role="user", parts=[types.Part(text=GREETING_PROMPT)]),
+                    turn_complete=True,
+                )
             await send({"type": "session", "model": LIVE_MODEL_ID, "tools": TOOL_NAMES, "avatar": avatar_description(avatar_enabled)})
             await send({"type": "state", "state": _current_ui_state(session)})
             await send({"type": "ready"})
@@ -1175,10 +1214,10 @@ async def live_voice(websocket: WebSocket) -> None:
                 task.result()
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception as exc:
         logger.exception("Gemini Live session failed")
         with contextlib.suppress(Exception):
-            await send({"type": "error", "message": "Live connection ended. Reconnect to continue this intake."})
+            await send({"type": "error", "message": live_failure_message(exc)})
     finally:
         for task in list(tasks):
             task.cancel()

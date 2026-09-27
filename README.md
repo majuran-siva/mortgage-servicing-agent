@@ -103,6 +103,7 @@ Restart the server after changing `.env`.
 | `MORTGAGE_GEMINI_LIVE_MODEL` | `gemini-3.8-live` | Live conversation and avatar |
 | `MORTGAGE_VOICE` | `Kore` | Voice-only responses |
 | `MORTGAGE_REQUEST_MODEL` | `gemini-3.8-flash` | Background request team and document captions; switch to `gemini-flash-latest` if you see 503 "high demand" errors |
+| `GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | `False`, empty, empty | Set to `True`, your project ID and `global` to run the request team and document captions on a Google Cloud project (billed per use) instead of the AI Studio key's free daily limit. Needs `gcloud auth application-default login`. |
 | `MORTGAGE_TRANSCRIPTION_VOCABULARY` | Empty | Comma-separated speech-recognition hints |
 | `MORTGAGE_AVATAR_NAME` | Empty | Prebuilt avatar; empty disables it unless an image is set |
 | `MORTGAGE_AVATAR_PROJECT` | Empty | Avatar Cloud project |

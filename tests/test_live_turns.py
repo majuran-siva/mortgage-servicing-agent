@@ -65,8 +65,9 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
              patch.object(s, '_live_client', return_value=fake), \
              patch.object(s, '_run_workflow_cached', new=AsyncMock(return_value=s.build_initial_workflow_state())):
             await asyncio.wait_for(s.live_voice(WS()), 2)
-        self.assertEqual(bool(configurations[0].history_config), bool(initial))
-        if initial:
+        seeded = bool(initial) and initial != s.GREETING
+        self.assertEqual(bool(configurations[0].history_config), seeded)
+        if seeded:
             self.assertTrue(configurations[0].history_config.initial_history_in_client_content)
         return session, sent, context
 
@@ -103,6 +104,20 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(context[0]['turn_complete'])
         self.assertEqual(context[0]['turns'][0].role, 'model')
         self.assertEqual(context[0]['turns'][0].parts[0].text, greeting)
+
+    async def test_new_call_speaks_the_greeting_once(self):
+        session, sent, context = await self.run_events([
+            event(output_transcription=words('Hi, I can help with changes to your mortgage.', True), turn_complete=True),
+        ], initial=s.GREETING)
+        self.assertEqual(len(context), 1)
+        self.assertEqual(context[0]['turns'].role, 'user')
+        self.assertIn(s.GREETING, context[0]['turns'].parts[0].text)
+        self.assertTrue(context[0]['turn_complete'])
+        self.assertTrue(session.greeted)
+        # The spoken greeting reuses the visible greeting turn rather than adding a second one.
+        self.assertEqual([t['text'] for t in session.transcript], [s.GREETING])
+        greeting_id = session.transcript[0]['id']
+        self.assertTrue(all(m['id'] == greeting_id for m in sent if m['type'] == 'transcript'))
 
     def test_voice_and_avatar_allow_speech_to_interrupt(self):
         for name in ['', 'Kira']:
