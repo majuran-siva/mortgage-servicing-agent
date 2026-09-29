@@ -17,6 +17,16 @@ from google.genai import types
 
 LIVE_MODEL_ID = os.getenv("MORTGAGE_GEMINI_LIVE_MODEL", "gemini-3.8-live")
 VOICE_NAME = os.getenv("MORTGAGE_VOICE", "Kore")
+ASSISTANT_NAME = os.getenv("MORTGAGE_ASSISTANT_NAME", "Kira")
+LENDER_NAME = os.getenv("MORTGAGE_LENDER_NAME", "Demo Lending Company")
+GREETING = f"Hi, I'm {ASSISTANT_NAME} from {LENDER_NAME}. How can I help you with your mortgage today?"
+
+
+def identity_instruction() -> str:
+    return (
+        f"Your name is {ASSISTANT_NAME} and you work on the mortgage servicing team at {LENDER_NAME}. "
+        "Introduce yourself by name when you greet the caller. If asked, say you are an AI assistant."
+    )
 
 TOOL_NAMES = ["lookup_mortgage", "sync_service_request", "pin_document_photo", "show_payment_scenario"]
 FREQUENCIES = ["monthly", "semi_monthly", "bi_weekly", "accelerated_bi_weekly", "weekly", "accelerated_weekly"]
@@ -76,8 +86,10 @@ You work with a servicing team that runs in the background while you talk:
   light, and pin with confirmed=false. Never read out full bank account, transit, or
   card numbers, and never ask the caller to show government ID or a bank card.
   If an account's home insurance is expiring, ask the caller to show the renewed policy's
-  declaration page. When a capture returns an insurance expiry date, read it back and ask
-  the caller to confirm it.
+  declaration page, or to upload it with the Upload document button if they prefer.
+  When a capture returns an insurance expiry date, read it back and ask the caller to
+  confirm it. An app notice may tell you the caller uploaded a document; acknowledge it
+  in a sentence, read back any expiry date, and call sync_service_request.
 
 Hardship: if the caller says they have lost income, are ill, are grieving, have missed
 payments, or received a legal notice, slow down. Acknowledge it plainly and kindly, do not
@@ -238,6 +250,7 @@ def build_live_config(
         avatar_config=avatar_config,
         history_config=types.HistoryConfig(initial_history_in_client_content=True) if seed_history else None,
         system_instruction="\n".join([
+            identity_instruction(),
             SYSTEM_INSTRUCTION,
             camera_mode_instruction(camera_enabled),
             "Reference clock: " + datetime.now().astimezone().isoformat(),
@@ -338,6 +351,9 @@ def tool_headline(name: str, args: dict[str, Any], result: dict[str, Any] | None
 
 
 __all__ = [
+    "ASSISTANT_NAME",
+    "GREETING",
+    "LENDER_NAME",
     "LIVE_MODEL_ID",
     "SYSTEM_INSTRUCTION",
     "TOOL_NAMES",

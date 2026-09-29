@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=calls-3" />
+    <link rel="stylesheet" href="./styles.css?v=upload-4" />
   </head>
   <body>
     <div class="desk">
@@ -93,6 +93,11 @@
                   <span class="icon-camera" aria-hidden="true"></span>
                   <span class="round-label">Show document</span>
                 </button>
+                <button id="uploadButton" class="round-button" type="button" aria-label="Upload a document from your device">
+                  <span class="icon-upload" aria-hidden="true"></span>
+                  <span class="round-label">Upload document</span>
+                </button>
+                <input id="documentFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" hidden />
                 <button id="endCallButton" class="round-button end-call" type="button" aria-label="End the call" disabled>
                   <span class="icon-end" aria-hidden="true"></span>
                   <span class="round-label">End call</span>
@@ -130,6 +135,6 @@
 
     <canvas id="frameCanvas" hidden></canvas>
     <script src="./avatar.js?v=4"></script>
-    <script src="./app.js?v=calls-1"></script>
+    <script src="./app.js?v=upload-1"></script>
   </body>
 </html>

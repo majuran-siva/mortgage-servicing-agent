@@ -14,6 +14,10 @@ const videoCallButton = document.querySelector("#videoCallButton");
 const endCallButton = document.querySelector("#endCallButton");
 const cameraButton = document.querySelector("#cameraButton");
 const cameraTagText = document.querySelector("#cameraTagText");
+const uploadButton = document.querySelector("#uploadButton");
+const documentFile = document.querySelector("#documentFile");
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+let uploading = false;
 const cameraStage = document.querySelector("#cameraStage");
 const cameraPreview = document.querySelector("#cameraPreview");
 const frameCanvas = document.querySelector("#frameCanvas");
@@ -238,10 +242,15 @@ function renderPinboard() {
   const cards = photos.map(
     (photo, index) => `
       <figure class="polaroid" style="--tilt: ${index % 2 ? 2 : -2.5}deg" data-key="${escapeHtml(photo.id)}">
-        <img src="${photo.data_url}" alt="Document captured on camera" />
+        ${photo.mime_type === "application/pdf"
+          ? `<div class="doc-tile" role="img" aria-label="Uploaded PDF"><span>PDF</span>${escapeHtml(photo.file_name || "document.pdf")}</div>`
+          : `<img src="${photo.data_url}" alt="${photo.evidence_type === "upload" ? "Uploaded document" : "Document captured on camera"}" />`}
         <figcaption>${escapeHtml(photo.caption)}</figcaption>
-        <span class="tag ${photo.confirmed ? "" : "unconfirmed"}">${photo.caller_description ? `Caller says: ${escapeHtml(photo.caller_description)} · ` : ""}${photo.confirmed ? "Matches what the caller described" : "Not confirmed by this image"}</span>
-        <span class="tag">Captured ${escapeHtml(photo.captured_at || "")}</span>
+        ${photo.evidence_type === "upload"
+          ? `<span class="tag">Uploaded by the caller${photo.file_name ? ` · ${escapeHtml(photo.file_name)}` : ""}</span>`
+          : `<span class="tag ${photo.confirmed ? "" : "unconfirmed"}">${photo.caller_description ? `Caller says: ${escapeHtml(photo.caller_description)} · ` : ""}${photo.confirmed ? "Matches what the caller described" : "Not confirmed by this image"}</span>`}
+        ${photo.expiry_date ? `<span class="tag">Insurance expires ${escapeHtml(photo.expiry_date)}</span>` : ""}
+        <span class="tag">${photo.evidence_type === "upload" ? "Uploaded" : "Captured"} ${escapeHtml(photo.captured_at || "")}</span>
       </figure>`
   );
   if (scenario) cards.unshift(scenarioCard(scenario));
@@ -483,6 +492,7 @@ async function createSession(resume = false) {
     if (epoch !== generation) return;
     sessionId = payload.session_id;
     sessionStorage.setItem("intakeSession", sessionId);
+    renderCallControls();
     setState(payload.state);
     const health = await api("/api/health");
     window.claimAvatar?.configure(health.avatar);
@@ -718,6 +728,33 @@ async function startCall(mode) {
   }
 }
 
+async function uploadDocument(file) {
+  if (!file || uploading || !sessionId) return;
+  if (file.size > MAX_UPLOAD_BYTES) {
+    appendSystem("That file is over 8 MB. Try a smaller photo or PDF.");
+    return;
+  }
+  const epoch = generation;
+  uploading = true;
+  renderCallControls();
+  try {
+    const response = await fetch(`${API_ORIGIN}/api/sessions/${sessionId}/documents`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream", "X-File-Name": encodeURIComponent(file.name) },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || `Upload failed with status ${response.status}`);
+    if (epoch === generation) applyServerState(payload.state);
+  } catch (error) {
+    if (epoch === generation) appendSystem(`Upload failed: ${error.message}`);
+  } finally {
+    uploading = false;
+    documentFile.value = "";
+    renderCallControls();
+  }
+}
+
 function endCall() {
   stopCamera();
   stopLiveVoice(true);
@@ -751,6 +788,7 @@ function renderCallControls() {
     disabled: callPending || callMode === "video",
     title: callMode === "video" ? "Your camera is already on. Hold the document up to it." : "",
   });
+  setButton(uploadButton, { label: uploading ? "Uploading…" : "Upload document", disabled: uploading || !sessionId });
   setButton(endCallButton, { label: "End call", disabled: !inCall && !liveSocket });
 }
 
@@ -810,6 +848,8 @@ function playPcm24(base64) {
 audioCallButton.addEventListener("click", () => startCall("audio"));
 videoCallButton.addEventListener("click", () => startCall("video"));
 endCallButton.addEventListener("click", endCall);
+uploadButton.addEventListener("click", () => documentFile.click());
+documentFile.addEventListener("change", () => uploadDocument(documentFile.files?.[0]));
 cameraButton.addEventListener("click", () => (cameraStream ? stopCamera() : startCamera("document")));
 newIntakeButton.addEventListener("click", () => createSession(false));
 window.addEventListener("pagehide", disconnectLive);

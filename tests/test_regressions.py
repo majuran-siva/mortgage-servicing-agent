@@ -637,6 +637,49 @@ class AccessTests(unittest.TestCase):
             self.assertIn('Payment scenario shown to the caller', md)
             self.assertNotIn('data_url', json.loads(archive.read('documents.json'))[0])
             self.assertEqual(json.loads(archive.read('payment-scenario.json'))['version'], 1)
+    def test_upload_document_pins_and_reads_expiry(self):
+        sid = self.create(); session = s.sessions[sid]
+        async def model(**kwargs):
+            self.assertEqual(kwargs['contents'][0].inline_data.mime_type, 'application/pdf')
+            return NS(text=json.dumps(dict(observation='Home insurance declaration page for Joe Smith.', supports_caller_description=False,
+                                           document_types=['insurance_declaration'], expiry_date='2027-09-30')))
+        with patch.object(s, '_client', return_value=NS(aio=NS(models=NS(generate_content=model)))), \
+             patch.object(s, '_run_workflow_cached', side_effect=RuntimeError('model offline')):
+            response = self.client.post('/api/sessions/' + sid + '/documents', content=b'%PDF-1.4 test',
+                                        headers={**self.headers, 'Content-Type': 'application/pdf', 'X-File-Name': 'joe%20insurance.pdf'})
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body['result']['insurance_expiry_on_document'], '2027-09-30')
+        photo = session.evidence_photos[0]
+        self.assertEqual((photo['evidence_type'], photo['mime_type'], photo['file_name']), ('upload', 'application/pdf', 'joe insurance.pdf'))
+        self.assertEqual(body['state']['evidence_photos'][0]['id'], photo['id'])
+        packet = self.client.get('/api/sessions/' + sid + '/packet')
+        with zipfile.ZipFile(io.BytesIO(packet.content)) as archive:
+            self.assertEqual(archive.read(f"documents/{photo['id']}.pdf"), b'%PDF-1.4 test')
+
+    def test_upload_rejects_wrong_type_spoofed_or_oversized_files(self):
+        sid = self.create()
+        cases = [('text/plain', b'hello', 415), ('image/png', b'%PDF-1.4 not a png', 415),
+                 ('image/jpeg', b'\xff\xd8\xff' + b'0' * (s.MAX_UPLOAD_BYTES + 1), 413)]
+        with patch.object(s, '_client') as client:
+            for mime, data, status in cases:
+                with self.subTest(mime=mime, status=status):
+                    response = self.client.post('/api/sessions/' + sid + '/documents', content=data, headers={**self.headers, 'Content-Type': mime})
+                    self.assertEqual(response.status_code, status)
+            client.assert_not_called()
+        self.assertEqual(s.sessions[sid].evidence_photos, [])
+
+    def test_upload_requires_owner(self):
+        sid = self.create()
+        with TestClient(s.app, base_url='http://127.0.0.1:4188') as other:
+            response = other.post('/api/sessions/' + sid + '/documents', content=b'%PDF-1.4', headers={**self.headers, 'Content-Type': 'application/pdf'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_greeting_introduces_kira_and_lender(self):
+        self.assertIn('Kira', s.GREETING); self.assertIn('Demo Lending Company', s.GREETING)
+        from live_demo.live_tools import build_live_config
+        self.assertIn('Your name is Kira', build_live_config().system_instruction)
+
     def test_session_limit_and_source_not_served(self):
         for _ in range(4): self.create()
         self.assertEqual(self.client.post('/api/sessions', headers=self.headers).status_code, 429)
