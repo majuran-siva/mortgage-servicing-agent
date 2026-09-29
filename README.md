@@ -4,7 +4,7 @@ A voice agent for Canadian mortgage servicing calls. Homeowners can change their
 
 A background agent team extracts the request, applies servicing rules (prepayment allowances, payment-increase limits, arrears, maturity) plus security and hardship checks, and prepares a downloadable request packet for a servicing representative.
 
-Adapted from [insurance_claim_live_agent_team](https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/voice_ai_agents/insurance_claim_live_agent_team). The upstream commit is in `.upstream-commit`.
+Adapted from [insurance_claim_live_agent_team](https://github.com/Shubhamsaboo/awesome-llm-apps/tree/main/voice_ai_agents/insurance_claim_live_agent_team) in [awesome-llm-apps](https://github.com/Shubhamsaboo/awesome-llm-apps) by Shubham Saboo, licensed under Apache 2.0. The upstream commit is in `.upstream-commit`.
 
 ## Features
 
@@ -122,3 +122,7 @@ node tests/avatar-player.cjs
 ```
 
 The JavaScript tests need Node.js. Model calls and devices are mocked; check live microphone and camera behaviour separately.
+
+## License
+
+Apache License 2.0; see [LICENSE](LICENSE). This project modifies the upstream insurance claim demo: the domain was changed to Canadian mortgage servicing (data models, rules, mock data, prompts, tools), a payment scenario calculator and chart replaced incident sketches, and the UI was redesigned. All people, accounts, and documents in it are fictional.
