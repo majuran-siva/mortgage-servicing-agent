@@ -147,3 +147,72 @@ class LiveTurnTests(unittest.IsolatedAsyncioTestCase):
     def test_no_name_is_assumed_without_vocabulary(self):
         with patch.dict(os.environ, {'MORTGAGE_TRANSCRIPTION_VOCABULARY': ''}):
             self.assertIsNone(build_live_config().input_audio_transcription.custom_vocabulary)
+
+
+class SyncLatencyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sync_replies_before_slow_review_finishes(self):
+        """Giving a phone number must not leave Kira waiting on the background review."""
+        session = s.IntakeSession('sync-latency', owner='owner')
+        s.sessions[session.session_id] = session
+        self.addCleanup(s.sessions.pop, session.session_id, None)
+        review_started, release_review, replied = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        responses = []
+
+        async def slow_review(_session):
+            review_started.set()
+            await release_review.wait()
+            return s.build_initial_workflow_state()
+
+        call = NS(id='call-1', name='sync_service_request',
+                  args={'contact_method': '905-555-0162', 'request_summary': 'Make a prepayment.'})
+        tool_event = NS(server_content=None, tool_call=NS(function_calls=[call]), tool_call_cancellation=None)
+
+        class WS:
+            headers = {'host': '127.0.0.1:4177', 'origin': 'http://127.0.0.1:4177'}
+            client = NS(host='127.0.0.1'); url = NS(scheme='ws')
+            cookies = {'intake_owner': 'owner'}; query_params = {'session_id': session.session_id}
+            async def accept(self): pass
+            async def close(self, **kwargs): pass
+            async def send_json(self, payload): pass
+            async def receive_text(self):
+                await replied.wait()
+                release_review.set()
+                return json.dumps({'type': 'close'})
+
+        class Live:
+            async def send_client_content(self, **kwargs): pass
+            async def send_tool_response(self, function_responses):
+                # The reply must arrive while the review is still running.
+                responses.append((review_started.is_set(), release_review.is_set(), function_responses[0].response))
+                replied.set()
+            async def receive(self):
+                yield tool_event
+                await asyncio.Event().wait()
+
+        class Connection:
+            async def __aenter__(self): return Live()
+            async def __aexit__(self, *args): pass
+
+        fake = NS(aio=NS(live=NS(connect=lambda **kw: Connection())))
+        with patch.object(s, '_has_api_key', return_value=True), \
+             patch.object(s, '_live_client', return_value=fake), \
+             patch.object(s, '_run_workflow_cached', side_effect=slow_review):
+            await asyncio.wait_for(s.live_voice(WS()), 2)
+
+        self.assertEqual(len(responses), 1)
+        _, review_finished_before_reply, result = responses[0]
+        self.assertFalse(review_finished_before_reply)
+        self.assertNotIn('contact_method', result['open_items'])
+        self.assertEqual(session.agent_notes['contact_method'], '905-555-0162')
+
+    async def test_urgent_route_is_announced_once(self):
+        sent = []
+        session = s.IntakeSession('announce', live_session=NS(send_client_content=AsyncMock(side_effect=lambda **kw: sent.append(kw))))
+        workflow = s.build_initial_workflow_state()
+        workflow['security_hardship_gate']['final_routing_decision'] = 'security_review'
+        await s.announce_urgent_route(session, workflow)
+        await s.announce_urgent_route(session, workflow)
+        self.assertEqual(len(sent), 1)
+        self.assertIn('security review', sent[0]['turns'].parts[0].text)
+        routine = s.build_initial_workflow_state()
+        await s.announce_urgent_route(s.IntakeSession('quiet', live_session=NS(send_client_content=AsyncMock())), routine)

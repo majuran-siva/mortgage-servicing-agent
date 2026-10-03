@@ -7,7 +7,7 @@
  * Sohne is proprietary, so Inter (with ss01 and tnum) substitutes. The mesh is approximated
  * with layered CSS gradients; Stripe's own is artwork.
  * Layout: cards float over the mesh; a sticky live call + transcript panel on the left,
- * call notes, servicing team, and the "still needed" checklist on the right.
+ * with the "still needed" checklist between them; call notes and servicing team on the right.
  */
 :root {
   /* Brand */
@@ -1400,14 +1400,28 @@ input:focus-visible {
 
 /* Desktop: the right panel stays in view and is exactly one screen tall. */
 @media (min-width: 1024px) {
-  /* Side panel on the left, call notes on the right. */
+  /* One-screen dashboard: the call panel on the left and the notes on the right are
+     both exactly one screen tall, so the page never scrolls. The notes and the
+     transcript scroll inside their own cards. */
   .desk-layout {
     grid-template-columns: clamp(380px, 34vw, 480px) minmax(0, 1fr);
     align-items: start;
-    padding-top: 48px;
+    padding-top: 24px;
+    padding-bottom: 24px;
   }
   .rail { grid-column: 1; grid-row: 1; }
-  .main-column { grid-column: 2; grid-row: 1; }
+  .main-column {
+    grid-column: 2;
+    grid-row: 1;
+    height: calc(100dvh - var(--nav-height) - 48px);
+    gap: 16px;
+  }
+  .main-column .notebook-wrap { flex: 1 1 0; min-height: 0; overflow: auto; }
+  .main-column .notebook { min-height: 100%; }
+  .main-column .team-card { flex-shrink: 0; padding: 16px 24px; }
+  .main-column .team-card .card-head { margin-bottom: 6px; }
+  .main-column .team-feed { max-height: 112px; overflow: auto; }
+  .main-column .team-feed li { padding: 6px 0; }
   .rail {
     position: sticky;
     top: calc(var(--nav-height) + 24px);
@@ -1421,10 +1435,26 @@ input:focus-visible {
   .rail .card-head { margin-bottom: 12px; }
   .rail .transcript-card { flex: 1 1 0; min-height: 180px; }
   .rail .transcript { flex: 1; min-height: 0; max-height: none; }
-  /* "Still needed" sits at the bottom of the right column; its list scrolls if it grows long. */
-  .main-column .needed-list { max-height: 220px; overflow: auto; }
+  /* "Still needed" sits between the call and the transcript as compact, wrapping chips. */
+  .rail .needed-card { display: flex; flex-direction: column; flex-shrink: 0; padding: 14px 20px 16px; }
+  .rail .needed-card .card-head { margin-bottom: 8px; }
+  .rail .needed-list { flex-direction: row; flex-wrap: wrap; gap: 6px; max-height: 62px; overflow: auto; }
+  .rail .needed-list li {
+    gap: 6px;
+    padding: 4px 10px 4px 6px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: var(--canvas-soft);
+    box-shadow: inset 0 0 0 1px var(--hairline);
+    font-size: 13px;
+    line-height: 1.3;
+  }
+  .rail .needed-list li.empty { padding: 0; background: none; box-shadow: none; }
+  .rail .needed-list .tick-box { width: 14px; height: 14px; margin-top: 0; }
+  .rail .needed-list li.done .tick-box::after { left: 4px; top: 1px; width: 3px; height: 7px; }
+  .rail .transcript-card { min-height: 124px; }
   /* The avatar scales with screen height so the panel still fits on a laptop. */
-  .call-card .avatar-stage { height: clamp(200px, 31dvh, 400px); }
+  .call-card .avatar-stage { height: clamp(150px, 21dvh, 400px); }
   .call-card > .avatar-stage[hidden] + .camera-stage { aspect-ratio: auto; height: 180px; }
 }
 
@@ -1433,10 +1463,10 @@ input:focus-visible {
   .main-column,
   .rail { display: contents; }
   .call-card { order: 1; }
-  .notebook-wrap { order: 2; }
-  .transcript-card { order: 3; }
-  .team-card { order: 4; }
-  .needed-card { order: 5; }
+  .needed-card { order: 2; }
+  .notebook-wrap { order: 3; }
+  .transcript-card { order: 4; }
+  .team-card { order: 5; }
   .notebook { padding: 32px 28px; }
 }
 

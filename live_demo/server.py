@@ -179,6 +179,7 @@ class IntakeSession:
     update_failure: str | None = None
     greeted: bool = False
     live_session: Any = None
+    announced_route: str | None = None
     live_model: str | None = None
     tool_activity: list[dict[str, Any]] = field(default_factory=list)
     last_workflow_key: str | None = None
@@ -566,6 +567,44 @@ def _with_known_facts(session: IntakeSession, workflow: dict[str, Any]) -> dict[
     if _status(request.get("raw_summary")) != "complete" and "request_summary" in filled:
         request["raw_summary"] = filled["request_summary"]
     return run_rule_steps(request, workflow["request_classification"])
+
+
+def quick_sync_result(session: IntakeSession) -> dict[str, Any]:
+    """Immediate sync_service_request reply from the latest review plus facts the agent just passed."""
+
+    known = _with_known_facts(session, session.last_workflow or build_initial_workflow_state())
+    result = summarize_workflow_for_voice(known)
+    if session.update_failure:
+        result.update(team_paused=session.update_failure, note=PAUSED_TEAM_NOTE)
+    else:
+        result["note"] = (
+            "This is the latest checklist; the servicing team is updating it in the background. Keep talking: "
+            "confirm what the caller just told you and ask for the next open item. If the review finds a security "
+            "or hardship issue, an app notice will tell you."
+        )
+    return result
+
+
+URGENT_ROUTES = {"security_review", "hardship_support"}
+
+
+async def announce_urgent_route(session: IntakeSession, workflow: dict[str, Any]) -> None:
+    """Tell the live agent when a background review newly routes the call to security or hardship."""
+
+    route = workflow["security_hardship_gate"]["final_routing_decision"]
+    if route not in URGENT_ROUTES or route == session.announced_route or session.live_session is None:
+        return
+    session.announced_route = route
+    message = workflow["service_request_packet"]["customer_next_message"]
+    from google.genai import types
+    with contextlib.suppress(Exception):
+        await session.live_session.send_client_content(
+            turns=types.Content(role="user", parts=[types.Part(text=(
+                f"(App notice, not the caller speaking: the servicing team's review routed this call to "
+                f"{route.replace('_', ' ')}. Tell the caller, in your own words: {message})"
+            ))]),
+            turn_complete=True,
+        )
 
 
 def paused_team_result(session: IntakeSession, kind: str) -> dict[str, Any]:
@@ -1012,6 +1051,7 @@ async def live_voice(websocket: WebSocket) -> None:
             workflow = await _run_workflow_cached(session)
             session.update_failure = None
             await send({"type": "state", "state": _state_from_workflow(session, workflow)})
+            await announce_urgent_route(session, workflow)
             return workflow
         except asyncio.CancelledError:
             raise
@@ -1076,9 +1116,12 @@ async def live_voice(websocket: WebSocket) -> None:
                     if value:
                         session.agent_notes[key] = value
                 await finalize("Caller")
-                workflow = await asyncio.shield(request_update())
-                result = summarize_workflow_for_voice(workflow) if workflow else paused_team_result(session, session.update_failure or "other")
-                urgent = bool(result.get("security_hold") or result.get("hardship_referral"))
+                # Reply right away with what is already known so Kira keeps talking; the full
+                # review runs in the background and updates the screen (and interrupts Kira
+                # only if it finds a security or hardship issue).
+                request_update()
+                result = quick_sync_result(session)
+                urgent = False
             elif name == "pin_document_photo":
                 result = await _pin_document_photo(session, args)
                 if result.get("pinned"):
